@@ -1,574 +1,438 @@
 
-# Model Owner's Initial Model Registration & Self-Assessment for Predictive Maintenance
+# Predictive Maintenance Model Registration & Initial Risk Self-Assessment (SR 11-7)
 
-**Scenario:** As **Alex Chen, a System / Model Owner** at Industrial Innovations Corp., you've been leading the development and implementation of a new "Predictive Maintenance Model." This model is designed to forecast equipment failures and optimize maintenance schedules across the company's manufacturing facilities. Before your model can go into full production, it's essential to comply with Industrial Innovations Corp.'s Model Risk Management (MRM) policies, which are heavily inspired by regulatory guidance like **SR 11-7**. Your immediate task is to register the model in the enterprise inventory and conduct a preliminary self-assessment of its inherent risk characteristics. This early documentation and risk evaluation are crucial to ensure transparency, facilitate effective challenge, and prevent downstream issues, laying the groundwork for a robust model lifecycle.
+**Persona:** Alex Chen, System / Model Owner at TechCo  
+**Organization:** TechCo, a leader in industrial automation and smart manufacturing.  
+**Case Study:** Alex is bringing a new AI model, the "Predictive Maintenance Model," into production. Before its official launch, Alex must register the model in TechCo's enterprise model inventory and conduct an initial self-assessment of its inherent risk characteristics. This process is crucial for complying with TechCo's internal Model Risk Management (MRM) policies, which are inspired by regulatory guidelines like SR 11-7, specifically Section IV: "Model Development, Implementation, and Use." This early assessment helps TechCo proactively manage potential model risks, ensuring responsible AI development and operational compliance.
 
 ---
 
-## 1. Setting Up the Environment and Dependencies
+## 1. Setting up the Model Registration Environment
 
-Before we begin the model registration process, we need to ensure our environment is set up correctly. This involves installing any necessary Python libraries and importing the modules that will help us manage data, define rules, and generate structured output.
+### Story + Context + Real-World Relevance
+
+Alex begins by setting up the necessary tools and defining TechCo's standardized framework for model registration and initial risk assessment. This framework includes explicit definitions for model metadata, a deterministic scoring mechanism for inherent risk factors, and clear thresholds for assigning a preliminary risk tier. This systematic approach, as emphasized in SR 11-7, ensures consistency, transparency, and auditability in the model lifecycle, enabling effective challenge and governance from the earliest stages.
+
+The deterministic scoring mechanism is based on assigning points to specific categorical values of inherent risk attributes. The total score is then mapped to a risk tier. This transparency is vital for explaining risk decisions to stakeholders, as highlighted in SR 11-7's emphasis on "sound model development, implementation, and use" and the need for clear documentation (SR 11-7, Section IV, Page 5, and Section VI, Page 21).
+
+### Code cell (function definition + function execution)
 
 ```python
-# Install required libraries (if not already installed)
-!pip install pandas uuid datetime ipywidgets
-```
-
-```python
-import pandas as pd
 import json
 import uuid
-from datetime import datetime
-from IPython.display import display, Markdown, HTML
-import ipywidgets as widgets
-from IPython.display import clear_output
-```
+import datetime
+import pandas as pd
 
-## 2. Defining Industrial Innovations Corp.'s MRM Policy: Risk Scoring & Tiers
-
-Alex understands that a clear, consistent policy is the backbone of effective MRM, as outlined in SR 11-7 Section VI, "Governance, Policies, and Controls." Industrial Innovations Corp. has established a deterministic scoring mechanism to assess inherent model risk. Each characteristic of a model (e.g., its criticality, data sensitivity) is assigned points, and the total score maps to a specific risk tier. This transparent approach ensures explainability and auditability for model risk decisions.
-
-The inherent risk score, $S$, for a model is calculated as the sum of points assigned to each of its key risk drivers:
-
-$$ S = \sum_{i=1}^{N} P_i(\text{Value}_i) $$
-
-where $N$ is the number of risk drivers, and $P_i(\text{Value}_i)$ is the points assigned to the specific value of the $i$-th risk driver.
-
-```python
-# Define the scoring policy for inherent risk drivers
-# This reflects Industrial Innovations Corp.'s internal MRM policy, aligned with SR 11-7 principles.
-RISK_SCORES = {
-    "decision_criticality": {
-        "Low": 1,
-        "Medium": 5,
-        "High": 10
+# Define the scoring logic for inherent risk factors
+RISK_SCORING_CONFIG = {
+    'decision_criticality': {
+        'Low': 1,
+        'Medium': 3,
+        'High': 5
     },
-    "data_sensitivity": {
-        "Public": 0,
-        "Internal": 2,
-        "Confidential": 5,
-        "Regulated-PII": 8
+    'data_sensitivity': {
+        'Public': 1,
+        'Internal': 2,
+        'Confidential': 3,
+        'Regulated-PII': 5
     },
-    "automation_level": {
-        "Advisory": 1,
-        "Human-Approval": 4,
-        "Fully-Automated": 7
+    'automation_level': {
+        'Advisory': 1,
+        'Semi': 3,
+        'Fully-Automated': 5
     },
-    "deployment_mode": {
-        "Internal-only": 1,
-        "Batch": 3,
-        "Human-in-loop": 5,
-        "Real-time": 8
+    'deployment_mode': {
+        'Internal-only': 1, # Similar to Batch for risk impact
+        'Batch': 1,
+        'Human-in-loop': 2,
+        'Real-time': 4
     },
-    "regulatory_materiality": {
-        "None": 0,
-        "Moderate": 6,
-        "High": 12
+    'regulatory_materiality': {
+        'None': 1,
+        'Moderate': 3,
+        'High': 5
     }
 }
 
-# Define the risk tier thresholds
-TIER_THRESHOLDS = {
-    "Tier 1": {"min_score": 22, "description": "Models with significant potential impact, requiring most stringent controls and validation."},
-    "Tier 2": {"min_score": 15, "description": "Models with moderate potential impact, requiring standard controls and validation."},
-    "Tier 3": {"min_score": 0, "description": "Models with limited potential impact, requiring basic controls and validation."} # Tier 3 is the lowest, acts as a fallback for scores below Tier 2
+# Define the risk tier thresholds (from Lab 3 attachment, Page 4)
+RISK_TIER_THRESHOLDS = {
+    'Tier 1': {'min_score': 22, 'description': 'Very High Risk: Requires extensive validation and stringent controls.'},
+    'Tier 2': {'min_score': 15, 'description': 'Moderate Risk: Requires thorough validation and enhanced controls.'},
+    'Tier 3': {'min_score': 0,  'description': 'Low Risk: Requires standard validation and basic controls.'} # min_score 0 for anything below Tier 2
 }
 
-# Define controlled vocabularies (enums) for model metadata
-CONTROLLED_VOCABULARIES = {
-    "domain": ["finance", "healthcare", "engineering", "operations", "other"],
-    "model_type": ["ML", "LLM", "AGENT", "Statistical"],
-    "decision_criticality": ["Low", "Medium", "High"],
-    "data_sensitivity": ["Public", "Internal", "Confidential", "Regulated-PII"],
-    "automation_level": ["Advisory", "Human-Approval", "Fully-Automated"],
-    "deployment_mode": ["Internal-only", "Batch", "Human-in-loop", "Real-time"],
-    "regulatory_materiality": ["None", "Moderate", "High"]
-}
+def calculate_initial_risk_score_and_tier(model_metadata):
+    """
+    Calculates the initial inherent risk score and assigns a preliminary tier based on
+    predefined scoring logic and tier thresholds.
 
-# Define required fields for model registration
-REQUIRED_FIELDS = [
-    "model_name", "business_use", "owner", "domain", "model_type",
-    "decision_criticality", "data_sensitivity", "automation_level",
-    "deployment_mode", "regulatory_materiality"
-]
+    Args:
+        model_metadata (dict): A dictionary containing model metadata, including
+                                inherent risk factors like 'decision_criticality',
+                                'data_sensitivity', 'automation_level',
+                                'deployment_mode', and 'regulatory_materiality'.
 
-# Define the current scoring policy version for auditability
-SCORING_POLICY_VERSION = "1.0.20240310"
+    Returns:
+        tuple: A tuple containing:
+            - total_score (int): The calculated total inherent risk score.
+            - preliminary_tier (str): The assigned preliminary risk tier (e.g., 'Tier 1').
+            - score_breakdown (dict): A breakdown of scores by each factor.
+    """
+    total_score = 0
+    score_breakdown = {}
 
-print("--- Industrial Innovations Corp. MRM Policy ---")
-print("\nRisk Factor Scoring:")
-for factor, scores in RISK_SCORES.items():
-    print(f"- {factor}: {scores}")
+    # Calculate score for each factor
+    for factor, values in RISK_SCORING_CONFIG.items():
+        if factor in model_metadata and model_metadata[factor] in values:
+            score = values[model_metadata[factor]]
+            total_score += score
+            score_breakdown[factor] = {'value': model_metadata[factor], 'score': score}
+        else:
+            # Handle cases where a factor is missing or value is invalid, assigning a default low score or flagging
+            # For this lab, we assume valid inputs for simplicity.
+            score_breakdown[factor] = {'value': model_metadata.get(factor, 'N/A'), 'score': 0}
 
-print("\nRisk Tier Thresholds:")
-for tier, details in TIER_THRESHOLDS.items():
-    print(f"- {tier} (Min Score: {details['min_score']}): {details['description']}")
+    # Determine the preliminary risk tier
+    preliminary_tier = 'Tier 3' # Default to lowest tier
+    for tier, thresholds in sorted(RISK_TIER_THRESHOLDS.items(), key=lambda item: item[1]['min_score'], reverse=True):
+        if total_score >= thresholds['min_score']:
+            preliminary_tier = tier
+            break
 
-print(f"\nScoring Policy Version: {SCORING_POLICY_VERSION}")
+    return total_score, preliminary_tier, score_breakdown
+
+# No direct execution of the core logic function yet, as we need to define model metadata first.
+# This cell serves to define the framework for subsequent sections.
 ```
 
 ### Explanation of Execution
 
-These definitions form the bedrock of Industrial Innovations Corp.'s Model Risk Management framework. By explicitly defining scoring for each risk attribute and clear tier thresholds, Alex can ensure that the initial risk assessment is objective, reproducible, and transparent. This aligns with SR 11-7's emphasis on strong governance and a structured approach to identifying and managing model risk from the earliest stages.
+This code defines the core logic that Alex will use throughout the self-assessment. `RISK_SCORING_CONFIG` and `RISK_TIER_THRESHOLDS` are crucial elements of TechCo's MRM policy, enabling a standardized and explainable approach to risk tiering. The `calculate_initial_risk_score_and_tier` function is designed to take model metadata and apply this deterministic logic. This standardization directly supports SR 11-7's call for clear policies and procedures to manage model risk effectively (SR 11-7, Section VI, Page 17). The explicit point assignments and thresholds ensure that the risk assessment is objective and reproducible.
 
 ---
 
-## 3. Registering Core Model Metadata
+## 2. Registering Core Model Identity and Purpose
 
-Alex's first concrete step is to populate the core metadata for the Predictive Maintenance Model. This forms the entry in the enterprise model inventory, a critical requirement under SR 11-7 (Section IV, "Model Development, Implementation, and Use" and Section VI, "Model Inventory"). Comprehensive metadata ensures that the model's purpose, ownership, and basic characteristics are clearly documented for all stakeholders, fostering "effective challenge" and understanding.
+### Story + Context + Real-World Relevance
+
+Alex's first task is to formally register the "Predictive Maintenance Model" by providing its fundamental identity and purpose. This step is equivalent to creating an entry in TechCo's central model inventory, a critical requirement for any organization managing AI at scale. SR 11-7 emphasizes the importance of a comprehensive model inventory that describes the model's purpose, intended use, and other key identifiers (SR 11-7, Section VI, Model Inventory, Page 20). This initial documentation is foundational for all subsequent MRM activities, including validation, monitoring, and change control.
+
+### Code cell (function definition + function execution)
 
 ```python
-def get_model_metadata_ui(controlled_vocab):
+def register_core_metadata(model_name, version, owner, business_unit, business_use, domain, model_type, intended_users=None, decision_context=None):
     """
-    Generates a UI for capturing model metadata using ipywidgets.
-    Provides pre-filled values for the Predictive Maintenance Model.
+    Registers the core identifying and purpose-related metadata for a new model.
+
+    Args:
+        model_name (str): The name of the model.
+        version (str): The version of the model (e.g., "1.0", "beta").
+        owner (str): The primary owner of the model (persona).
+        business_unit (str): The business unit responsible for the model.
+        business_use (str): A description of the model's business application.
+        domain (str): The operational domain (e.g., 'finance', 'healthcare', 'engineering').
+        model_type (str): The type of AI model (e.g., 'ML', 'LLM', 'AGENT').
+        intended_users (list, optional): List of intended user roles or departments.
+        decision_context (str, optional): The context in which decisions are made using the model.
+
+    Returns:
+        dict: A dictionary containing the registered core metadata.
     """
-    
-    # Pre-filled data for the Predictive Maintenance Model
-    initial_data = {
-        "model_id": str(uuid.uuid4()), # Generate a new UUID for each run
-        "model_name": "Predictive Maintenance Model",
-        "model_version": "1.0.0",
-        "owner": "Alex Chen (System/Model Owner)",
-        "business_use": "Predict equipment failures to optimize maintenance schedules and reduce downtime.",
-        "intended_users": "Maintenance Engineers, Operations Managers",
-        "model_outputs": "Probability of failure for key equipment components, recommended maintenance timing.",
-        "key_assumptions": "Historical sensor data is representative of future operational conditions. Failure modes are consistent.",
-        "known_limitations": "Performance may degrade with significant changes in operational environment or new equipment types. Limited data for rare failure modes.",
-        "fallback_process": "Manual inspection schedules, expert judgment for fault diagnosis.",
-        "third_party_dependencies": "None",
-        "external_dependencies": "Sensor data streams, ERP system for maintenance records.",
-        "domain": "operations", # Use lowercase as per enum
-        "model_type": "ML"
+    model_id = str(uuid.uuid4()) # Generate a unique model ID
+
+    core_metadata = {
+        'model_id': model_id,
+        'model_name': model_name,
+        'version': version,
+        'owner': owner,
+        'business_unit': business_unit,
+        'business_use': business_use,
+        'domain': domain,
+        'model_type': model_type,
+        'intended_users': intended_users if intended_users is not None else [],
+        'decision_context': decision_context,
+        'created_at': datetime.datetime.now().isoformat()
     }
+    return core_metadata
 
-    # Widget definitions for core metadata
-    model_name_widget = widgets.Text(description='Model Name:', value=initial_data["model_name"])
-    model_version_widget = widgets.Text(description='Version:', value=initial_data["model_version"])
-    owner_widget = widgets.Text(description='Owner:', value=initial_data["owner"])
-    business_use_widget = widgets.Textarea(description='Business Use:', value=initial_data["business_use"], rows=3)
-    domain_widget = widgets.Dropdown(description='Domain:', options=controlled_vocab["domain"], value=initial_data["domain"])
-    model_type_widget = widgets.Dropdown(description='Model Type:', options=controlled_vocab["model_type"], value=initial_data["model_type"])
+# Alex registers the Predictive Maintenance Model
+predictive_maintenance_model = register_core_metadata(
+    model_name="Predictive Maintenance Model",
+    version="1.0",
+    owner="Alex Chen",
+    business_unit="Manufacturing Operations",
+    business_use="Predict equipment failures in manufacturing lines to enable proactive maintenance and minimize downtime.",
+    domain="engineering",
+    model_type="ML",
+    intended_users=["Maintenance Technicians", "Operations Managers"],
+    decision_context="Alerting mechanism for maintenance scheduling and resource allocation."
+)
 
-    # Optional but recommended fields
-    intended_users_widget = widgets.Text(description='Intended Users:', value=initial_data["intended_users"])
-    model_outputs_widget = widgets.Textarea(description='Model Outputs:', value=initial_data["model_outputs"], rows=2)
-    key_assumptions_widget = widgets.Textarea(description='Key Assumptions:', value=initial_data["key_assumptions"], rows=2)
-    known_limitations_widget = widgets.Textarea(description='Known Limitations:', value=initial_data["known_limitations"], rows=2)
-    fallback_process_widget = widgets.Textarea(description='Fallback Process:', value=initial_data["fallback_process"], rows=2)
-    third_party_dependencies_widget = widgets.Text(description='Third-Party Dependencies:', value=initial_data["third_party_dependencies"])
-    external_dependencies_widget = widgets.Text(description='External Dependencies:', value=initial_data["external_dependencies"])
-    
-    # Store widgets in a dictionary for easy access
-    core_widgets = {
-        "model_id": widgets.Text(description='Model ID:', value=initial_data["model_id"], disabled=True),
-        "model_name": model_name_widget,
-        "model_version": model_version_widget,
-        "owner": owner_widget,
-        "business_use": business_use_widget,
-        "intended_users": intended_users_widget,
-        "model_outputs": model_outputs_widget,
-        "key_assumptions": key_assumptions_widget,
-        "known_limitations": known_limitations_widget,
-        "fallback_process": fallback_process_widget,
-        "third_party_dependencies": third_party_dependencies_widget,
-        "external_dependencies": external_dependencies_widget,
-        "domain": domain_widget,
-        "model_type": model_type_widget
-    }
-
-    # Group widgets into tabs for better organization
-    tab_titles = ['Core Details', 'Operational Context']
-    tab_contents = [
-        widgets.VBox([
-            core_widgets["model_id"],
-            core_widgets["model_name"],
-            core_widgets["model_version"],
-            core_widgets["owner"],
-            core_widgets["business_use"],
-            core_widgets["domain"],
-            core_widgets["model_type"]
-        ]),
-        widgets.VBox([
-            core_widgets["intended_users"],
-            core_widgets["model_outputs"],
-            core_widgets["key_assumptions"],
-            core_widgets["known_limitations"],
-            core_widgets["fallback_process"],
-            core_widgets["third_party_dependencies"],
-            core_widgets["external_dependencies"]
-        ])
-    ]
-    
-    tabs = widgets.Tab(children=tab_contents)
-    for i, title in enumerate(tab_titles):
-        tabs.set_title(i, title)
-
-    output_area = widgets.Output()
-    submit_button = widgets.Button(description="Submit Core Metadata")
-
-    def on_submit_button_clicked(b):
-        with output_area:
-            clear_output(wait=True)
-            model_metadata = {k: v.value for k, v in core_widgets.items()}
-            
-            # Validate required fields
-            missing_fields = [field for field in REQUIRED_FIELDS if field not in model_metadata or not model_metadata[field]]
-            if missing_fields:
-                print(f"Error: Missing required fields: {', '.join(missing_fields)}")
-                return
-
-            print("Core Model Metadata Captured:")
-            for k, v in model_metadata.items():
-                print(f"- {k}: {v}")
-            
-            # Store the metadata globally for subsequent steps
-            global_model_metadata['core'] = model_metadata
-            display(HTML("<hr>"))
-            display(Markdown("### Core Metadata Captured. Proceed to **Assessing Inherent Risk Factors**."))
-
-    submit_button.on_click(on_submit_button_clicked)
-    
-    display(tabs, submit_button, output_area)
-
-# Initialize a global dictionary to store model metadata across cells
-global_model_metadata = {}
-
-# Call the UI function
-get_model_metadata_ui(CONTROLLED_VOCABULARIES)
+print(json.dumps(predictive_maintenance_model, indent=2))
 ```
 
 ### Explanation of Execution
 
-Alex has successfully used the interactive form to document the foundational details of the Predictive Maintenance Model. This ensures that essential information like its unique ID, owner, and business purpose are recorded in the enterprise model inventory, aligning with SR 11-7's guidance on comprehensive model documentation. The automated validation also highlighted required fields, enforcing data completeness from the start.
+Alex has successfully registered the core details of the "Predictive Maintenance Model." The `model_id` provides a unique identifier, essential for tracking within TechCo's enterprise model inventory. The `business_use` and `domain` fields clearly articulate the model's purpose, directly addressing SR 11-7's guidance that "an effective development process begins with a clear statement of purpose to ensure that model development is aligned with the intended use" (SR 11-7, Section IV, Page 5). This output serves as the foundational record for the model's entry into the MRM system.
+
+---
+
+## 3. Detailing Model Implementation & Operational Basics
+
+### Story + Context + Real-World Relevance
+
+After establishing the core identity, Alex now provides details about how the Predictive Maintenance Model is implemented and its operational context. This includes specifying the algorithm family, training approach, and crucial operational details like owner and fallback processes. These details contribute to a holistic understanding of the model, which is critical for assessing potential operational risks and ensuring the model can be effectively managed throughout its lifecycle. SR 11-7 emphasizes that "sound model risk management depends on substantial investment in supporting systems to ensure data and reporting integrity, together with controls and testing to ensure proper implementation of models, effective systems integration, and appropriate use" (SR 11-7, Section IV, Page 7).
+
+### Code cell (function definition + function execution)
+
+```python
+def add_implementation_details(model_record, algorithm_family, training_approach, deployment_owner, upstream_systems, downstream_systems, fallback_process):
+    """
+    Adds implementation and operational details to the model registration record.
+
+    Args:
+        model_record (dict): The existing model registration dictionary.
+        algorithm_family (str): The family of algorithms used (e.g., 'Gradient Boosting', 'Deep Learning').
+        training_approach (str): How the model is trained ('batch', 'online', 'transfer learning').
+        deployment_owner (str): The team or individual responsible for technical deployment.
+        upstream_systems (list): Systems providing data to this model.
+        downstream_systems (list): Systems consuming outputs from this model.
+        fallback_process (str): Description of the process if the model fails or is unavailable.
+
+    Returns:
+        dict: The updated model registration dictionary.
+    """
+    model_record.update({
+        'algorithm_family': algorithm_family,
+        'training_approach': training_approach,
+        'deployment_owner': deployment_owner,
+        'upstream_systems': upstream_systems,
+        'downstream_systems': downstream_systems,
+        'fallback_process': fallback_process
+    })
+    return model_record
+
+# Alex adds implementation and operational details
+predictive_maintenance_model = add_implementation_details(
+    predictive_maintenance_model,
+    algorithm_family="Gradient Boosting",
+    training_approach="batch",
+    deployment_owner="ML Engineering Team A",
+    upstream_systems=["Sensor Data Lake", "ERP System"],
+    downstream_systems=["Maintenance Scheduling System", "Operations Dashboard"],
+    fallback_process="Manual equipment inspection and rule-based alarming."
+)
+
+print(json.dumps(predictive_maintenance_model, indent=2))
+```
+
+### Explanation of Execution
+
+The model record now includes details about its technical implementation and operational dependencies. Knowing the `algorithm_family` and `training_approach` helps the MRM team understand the model's inherent complexity and potential failure modes. Furthermore, identifying `upstream_systems`, `downstream_systems`, and a `fallback_process` is crucial for assessing its integration risks and business continuity, aligning with SR 11-7's focus on robust model implementation and use, especially concerning data flow and system interdependencies (SR 11-7, Section IV, Page 7).
 
 ---
 
 ## 4. Assessing Inherent Risk Factors
 
-Now that the core details are captured, Alex moves to assess the specific characteristics of the Predictive Maintenance Model that drive its inherent risk. This self-assessment is a proactive step in managing model risk, as emphasized in SR 11-7 (Section III, "Overview of Model Risk Management"). By evaluating factors like decision criticality and data sensitivity, Alex identifies potential adverse consequences, which is a key part of "inherent risk thinking" early in the model's lifecycle.
+### Story + Context + Real-World Relevance
+
+Now, Alex dives into the core of the self-assessment: evaluating the model's inherent risk drivers. This involves carefully considering the `decision_criticality` (how impactful its decisions are), `data_sensitivity` (the nature of data it processes), `automation_level` (degree of human intervention), `deployment_mode` (real-time vs. batch), and `regulatory_materiality` (regulatory implications). This self-assessment is a proactive measure to understand and document the model's risk profile from the perspective of the First Line of Defense, a key expectation of SR 11-7's "Model Development, Implementation, and Use" section (SR 11-7, Section IV, Page 5). Understanding these factors is critical for later determining the appropriate level of validation and oversight.
+
+### Code cell (function definition + function execution)
 
 ```python
-def get_risk_driver_ui(controlled_vocab):
+def add_inherent_risk_factors(model_record, decision_criticality, data_sensitivity, automation_level, deployment_mode, regulatory_materiality):
     """
-    Generates a UI for capturing risk driver metadata using ipywidgets.
-    Provides pre-filled values for the Predictive Maintenance Model's typical risk profile.
-    """
-    
-    # Pre-filled risk driver data for the Predictive Maintenance Model
-    initial_risk_drivers = {
-        "decision_criticality": "Medium", # Predicting equipment failure is critical but typically allows for human intervention
-        "data_sensitivity": "Internal", # Operational sensor data, not PII
-        "automation_level": "Human-Approval", # Provides recommendations, human still approves
-        "deployment_mode": "Human-in-loop", # Model results are reviewed by engineers before action
-        "regulatory_materiality": "None" # Internal operational model, not directly impacting regulated areas
-    }
+    Adds the inherent risk factors to the model registration record.
 
-    # Widget definitions for risk drivers
-    decision_criticality_widget = widgets.Dropdown(description='Decision Criticality:', options=controlled_vocab["decision_criticality"], value=initial_risk_drivers["decision_criticality"])
-    data_sensitivity_widget = widgets.Dropdown(description='Data Sensitivity:', options=controlled_vocab["data_sensitivity"], value=initial_risk_drivers["data_sensitivity"])
-    automation_level_widget = widgets.Dropdown(description='Automation Level:', options=controlled_vocab["automation_level"], value=initial_risk_drivers["automation_level"])
-    deployment_mode_widget = widgets.Dropdown(description='Deployment Mode:', options=controlled_vocab["deployment_mode"], value=initial_risk_drivers["deployment_mode"])
-    regulatory_materiality_widget = widgets.Dropdown(description='Regulatory Materiality:', options=controlled_vocab["regulatory_materiality"], value=initial_risk_drivers["regulatory_materiality"])
-    
-    risk_widgets = {
-        "decision_criticality": decision_criticality_widget,
-        "data_sensitivity": data_sensitivity_widget,
-        "automation_level": automation_level_widget,
-        "deployment_mode": deployment_mode_widget,
-        "regulatory_materiality": regulatory_materiality_widget
-    }
-
-    output_area = widgets.Output()
-    submit_button = widgets.Button(description="Assess Risk Factors")
-
-    def on_submit_button_clicked(b):
-        with output_area:
-            clear_output(wait=True)
-            risk_drivers_data = {k: v.value for k, v in risk_widgets.items()}
-            
-            # Validate required fields (already handled implicitly by dropdowns having values)
-            # but we can add an explicit check if needed, though for dropdowns it's less critical.
-            
-            # Consistency check example: Real-time fully automated with High criticality implies higher risk
-            if (risk_drivers_data["automation_level"] == "Fully-Automated" and
-                risk_drivers_data["deployment_mode"] == "Real-time" and
-                risk_drivers_data["decision_criticality"] == "High"):
-                print("Note: Fully automated real-time deployment with high decision criticality indicates heightened operational risk.")
-            
-            print("Inherent Risk Factors Captured:")
-            for k, v in risk_drivers_data.items():
-                print(f"- {k}: {v}")
-            
-            global_model_metadata['risk_drivers'] = risk_drivers_data
-            display(HTML("<hr>"))
-            display(Markdown("### Inherent Risk Factors Captured. Proceed to **Calculating Inherent Risk Score and Proposed Tier**."))
-
-    submit_button.on_click(on_submit_button_clicked)
-    
-    display(widgets.VBox(list(risk_widgets.values())), submit_button, output_area)
-
-# Call the UI function
-get_risk_driver_ui(CONTROLLED_VOCABULARIES)
-```
-
-### Explanation of Execution
-
-Alex has now specified the critical risk-driving attributes of the Predictive Maintenance Model. The selections (Medium criticality, Internal data, Human-Approval automation, Human-in-loop deployment, No regulatory materiality) reflect the current understanding of the model's operational context. This step is vital for a comprehensive model risk assessment, ensuring that potential sources of risk are identified early in the model's lifecycle, consistent with SR 11-7's principles on managing model risk magnitude.
-
----
-
-## 5. Calculating Inherent Risk Score and Proposed Tier
-
-With all the metadata and risk drivers in place, Alex proceeds to calculate the model's inherent risk score and determine its proposed tier. This process directly applies the deterministic tiering logic defined by Industrial Innovations Corp.'s MRM policy, derived from the concepts in LAB 3's "Tier Scoring (Deterministic)." This automated calculation provides an objective, initial assessment of the model's risk profile, informing subsequent MRM activities like validation depth and monitoring requirements.
-
-```python
-def calculate_inherent_risk(model_metadata, risk_scores, tier_thresholds):
-    """
-    Calculates the inherent risk score and determines the proposed risk tier
-    based on the provided model metadata and scoring policy.
-    
     Args:
-        model_metadata (dict): Dictionary containing model risk driver metadata.
-        risk_scores (dict): Dictionary defining points for each risk driver value.
-        tier_thresholds (dict): Dictionary defining score cutoffs for each risk tier.
-        
+        model_record (dict): The existing model registration dictionary.
+        decision_criticality (str): Impact of model decisions ('Low', 'Medium', 'High').
+        data_sensitivity (str): Sensitivity of data used ('Public', 'Internal', 'Confidential', 'Regulated-PII').
+        automation_level (str): Degree of human intervention ('Advisory', 'Semi', 'Fully-Automated').
+        deployment_mode (str): How the model is deployed ('Internal-only', 'Batch', 'Human-in-loop', 'Real-time').
+        regulatory_materiality (str): Regulatory impact ('None', 'Moderate', 'High').
+
     Returns:
-        dict: A dictionary containing the total risk score, proposed tier,
-              and a detailed breakdown of points by factor.
+        dict: The updated model registration dictionary.
     """
-    
-    total_score = 0
-    score_breakdown = {}
-    
-    for driver, value in model_metadata.items():
-        if driver in risk_scores:
-            points = risk_scores[driver].get(value, 0) # Default to 0 if value not found
-            total_score += points
-            score_breakdown[driver] = {"value": value, "points": points}
-            
-    proposed_tier = "Unknown"
-    tier_description = "N/A"
-    
-    # Determine the tier based on thresholds (higher tiers have higher min_score)
-    sorted_tiers = sorted(tier_thresholds.items(), key=lambda item: item[1]["min_score"], reverse=True)
-    for tier, details in sorted_tiers:
-        if total_score >= details["min_score"]:
-            proposed_tier = tier
-            tier_description = details["description"]
-            break
-            
-    return {
-        "total_score": total_score,
-        "proposed_tier": proposed_tier,
-        "tier_description": tier_description,
-        "score_breakdown": score_breakdown,
-        "scoring_policy_version": SCORING_POLICY_VERSION,
-        "assessment_timestamp": datetime.now().isoformat()
-    }
+    # Basic validation for allowed values
+    for factor, allowed_values in RISK_SCORING_CONFIG.items():
+        input_value = locals()[factor] # Get the value of the parameter with the same name
+        if input_value not in allowed_values:
+            raise ValueError(f"Invalid value '{input_value}' for '{factor}'. Must be one of {list(allowed_values.keys())}")
 
-# Ensure core and risk_drivers metadata are available
-if 'core' in global_model_metadata and 'risk_drivers' in global_model_metadata:
-    
-    # Combine relevant metadata for risk calculation
-    model_risk_data = global_model_metadata['risk_drivers']
-    
-    # Perform the risk calculation
-    inherent_risk_assessment = calculate_inherent_risk(model_risk_data, RISK_SCORES, TIER_THRESHOLDS)
-    
-    # Store the assessment globally
-    global_model_metadata['inherent_risk_assessment'] = inherent_risk_assessment
-    
-    display(Markdown("### Inherent Risk Assessment Results"))
-    display(Markdown(f"**Model Name:** {global_model_metadata['core']['model_name']}"))
-    display(Markdown(f"**Total Inherent Risk Score:** {inherent_risk_assessment['total_score']}"))
-    display(Markdown(f"**Proposed Risk Tier:** <span style='font-size: 1.2em; font-weight: bold; color: {'red' if inherent_risk_assessment['proposed_tier'] == 'Tier 1' else 'orange' if inherent_risk_assessment['proposed_tier'] == 'Tier 2' else 'green'}'>{inherent_risk_assessment['proposed_tier']}</span>"))
-    display(Markdown(f"**Tier Description:** {inherent_risk_assessment['tier_description']}"))
-    display(Markdown(f"**Assessment Timestamp:** {inherent_risk_assessment['assessment_timestamp']}"))
+    model_record.update({
+        'decision_criticality': decision_criticality,
+        'data_sensitivity': data_sensitivity,
+        'automation_level': automation_level,
+        'deployment_mode': deployment_mode,
+        'regulatory_materiality': regulatory_materiality
+    })
+    return model_record
 
-    display(Markdown("\n#### Risk Factor Breakdown:"))
-    breakdown_df = pd.DataFrame.from_dict(inherent_risk_assessment['score_breakdown'], orient='index')
-    breakdown_df.index.name = 'Risk Driver'
-    breakdown_df.rename(columns={'value': 'Selected Value', 'points': 'Points Contributed'}, inplace=True)
-    display(breakdown_df)
-    
-    display(HTML("<hr>"))
-    display(Markdown("### Inherent Risk Score and Tier Calculated. Proceed to **Documenting Owner's Narrative and Mitigations**."))
+# Alex assesses and adds the inherent risk factors for the Predictive Maintenance Model
+predictive_maintenance_model = add_inherent_risk_factors(
+    predictive_maintenance_model,
+    decision_criticality="Medium",      # Predicts failure; alerts for human action; impacts operational uptime.
+    data_sensitivity="Internal",       # Uses proprietary sensor data, but no PII.
+    automation_level="Semi",           # Generates alerts, but human technicians make final maintenance decisions.
+    deployment_mode="Real-time",       # Needs to detect anomalies and alert quickly for proactive maintenance.
+    regulatory_materiality="None"      # Primarily internal operational efficiency, no direct external regulatory reporting.
+)
 
-else:
-    display(Markdown("Please ensure core model metadata and risk drivers are submitted in previous sections."))
-
+print(json.dumps(predictive_maintenance_model, indent=2))
 ```
 
 ### Explanation of Execution
 
-Alex has successfully calculated the inherent risk score for the Predictive Maintenance Model. The breakdown clearly shows how each characteristic, such as 'Medium' decision criticality and 'Human-in-loop' deployment mode, contributed to the overall score. The model received a `Tier 2` classification, indicating moderate potential impact. This deterministic output provides a transparent basis for further discussion with the MRM team and aligns with SR 11-7's call for explainable tiering decisions.
+The `predictive_maintenance_model` record now contains the crucial inherent risk factors. Alex's careful assessment of these categories provides the necessary inputs for TechCo's deterministic tiering logic. Each choice reflects a judgment about the model's potential for adverse consequences, directly linking to SR 11-7's definition of "model risk" as "the potential for adverse consequences from decisions based on incorrect or misused model outputs" (SR 11-7, Section III, Page 3). This data forms the basis for quantitative risk scoring.
 
 ---
 
-## 6. Documenting Owner's Narrative and Mitigations
+## 5. Calculating Initial Risk Score and Assigning Preliminary Tier
 
-Alex's final task in this initial self-assessment is to provide a qualitative narrative, detailing their perspective on the model's risk, immediate mitigating factors, and any open questions for the MRM team. This narrative is crucial for "effective challenge" (SR 11-7, Section III) and provides vital context beyond quantitative scores, capturing the Model Owner's deeper understanding of the model's context and operational realities. It's the "preliminary risk narrative" that serves as a first input to the formal MRM process.
+### Story + Context + Real-World Relevance
+
+With all relevant metadata and inherent risk factors documented, Alex now uses TechCo's standardized scoring mechanism to compute an initial risk score and assign a preliminary risk tier. This quantitative assessment provides an objective, first-pass understanding of the model's risk profile. The process follows TechCo's established "Tier Scoring (Deterministic)" methodology, as described in the lab brief and consistent with Lab 3's core logic. The total risk score, denoted as $\text{Total Risk Score}$, is calculated as the sum of individual scores from each inherent risk factor.
+
+$$ \text{Total Risk Score} = S_{\text{criticality}} + S_{\text{sensitivity}} + S_{\text{automation}} + S_{\text{deployment}} + S_{\text{regulatory}} $$
+
+where $S_X$ represents the score assigned to the chosen value of risk factor $X$.  
+This score is then mapped to a tier using predefined thresholds:
+- Tier 1: $\text{Total Risk Score} \geq 22$
+- Tier 2: $\text{Total Risk Score} \geq 15$
+- Tier 3: $\text{Total Risk Score} < 15$
+
+This transparent tiering is essential for explaining risk decisions and aligning the model with appropriate levels of validation rigor and oversight, a core tenet of SR 11-7 (SR 11-7, Section VII, Page 21: "practical application of this guidance should be commensurate with a bank's risk exposures, its business activities, and the extent and complexity of its model use.").
+
+### Code cell (function definition + function execution)
 
 ```python
-def get_owner_narrative_ui():
-    """
-    Generates a UI for capturing the Model Owner's narrative and mitigations.
-    """
-    
-    # Pre-filled narrative for the Predictive Maintenance Model
-    initial_narrative = {
-        "owner_risk_narrative": (
-            "The Predictive Maintenance Model, while critical for operational efficiency, is designed with human-in-loop oversight. "
-            "Its outputs serve as recommendations, requiring approval from maintenance engineers before any action. "
-            "This significantly reduces the risk of incorrect automated decisions leading to adverse impacts. "
-            "The model primarily uses internal sensor data, which is not sensitive from a privacy perspective."
-        ),
-        "immediate_mitigations": (
-            "- Human-in-loop approval for all maintenance actions derived from model outputs.\n"
-            "- Shadow mode deployment for 3 months post-initial validation to compare model recommendations with current practices.\n"
-            "- Robust logging of model predictions and actual outcomes for continuous monitoring."
-        ),
-        "open_questions_for_mrm": (
-            "- How should the model's performance be formally monitored post-deployment, and at what frequency?\n"
-            "- What are the specific requirements for re-validation if the underlying equipment or operational context changes significantly?\n"
-            "- Are there any specific data retention policies for sensor data used by this model?"
-        )
-    }
+# Execute the previously defined scoring function
+total_score, preliminary_tier, score_breakdown = calculate_initial_risk_score_and_tier(predictive_maintenance_model)
 
-    owner_narrative_widget = widgets.Textarea(description='Owner Risk Narrative:', value=initial_narrative["owner_risk_narrative"], rows=6)
-    immediate_mitigations_widget = widgets.Textarea(description='Immediate Mitigations:', value=initial_narrative["immediate_mitigations"], rows=5)
-    open_questions_for_mrm_widget = widgets.Textarea(description='Open Questions for MRM:', value=initial_narrative["open_questions_for_mrm"], rows=5)
-    
-    narrative_widgets = {
-        "owner_risk_narrative": owner_narrative_widget,
-        "immediate_mitigations": immediate_mitigations_widget,
-        "open_questions_for_mrm": open_questions_for_mrm_widget
-    }
+predictive_maintenance_model['initial_risk_score'] = total_score
+predictive_maintenance_model['preliminary_risk_tier'] = preliminary_tier
+predictive_maintenance_model['score_breakdown'] = score_breakdown
 
-    output_area = widgets.Output()
-    submit_button = widgets.Button(description="Submit Narrative & Mitigations")
+print(f"Calculated Initial Risk Score: {total_score}")
+print(f"Proposed Preliminary Risk Tier: {preliminary_tier}")
+print("\nScore Breakdown:")
+for factor, details in score_breakdown.items():
+    print(f"  - {factor}: {details['value']} (Score: {details['score']})")
 
-    def on_submit_button_clicked(b):
-        with output_area:
-            clear_output(wait=True)
-            narrative_data = {k: v.value for k, v in narrative_widgets.items()}
-            
-            print("Owner's Narrative and Mitigations Captured:")
-            for k, v in narrative_data.items():
-                print(f"- {k}:\n{v}\n")
-            
-            global_model_metadata['owner_narrative'] = narrative_data
-            display(HTML("<hr>"))
-            display(Markdown("### Narrative Captured. Proceed to **Final Review and Export of MRM Artifacts**."))
+print(f"\nFull Model Registration (with scoring results):\n{json.dumps(predictive_maintenance_model, indent=2)}")
 
-    submit_button.on_click(on_submit_button_clicked)
-    
-    display(widgets.VBox(list(narrative_widgets.values())), submit_button, output_area)
-
-# Call the UI function
-get_owner_narrative_ui()
+# Display tiering rationale for persona's understanding
+tier_description = RISK_TIER_THRESHOLDS[preliminary_tier]['description']
+print(f"\nTier Rationale for {preliminary_tier}: {tier_description}")
 ```
 
 ### Explanation of Execution
 
-Alex has articulated the qualitative aspects of the Predictive Maintenance Model's risk profile, complementing the quantitative score. The narrative highlights the human-in-the-loop design as a key control, while the listed mitigations and open questions provide a clear agenda for engagement with the MRM team. This rich context is invaluable for MRM personnel to conduct a thorough review and ensures that Alex, as the Model Owner, has proactively contributed to the model's overall risk management, as expected by SR 11-7.
+The "Predictive Maintenance Model" has an `initial_risk_score` of 13, resulting in a `preliminary_risk_tier` of 'Tier 3'. The score breakdown clearly shows how each inherent risk factor contributed to the total. For Alex, this outcome is important: a Tier 3 model typically implies standard, less intensive validation and control requirements compared to higher-tier models. This objective, quantitative assessment helps Alex articulate the model's risk profile to the MRM team and ensures compliance with TechCo's framework for aligning validation efforts with the model's inherent risk, as per SR 11-7 principles of proportionality (SR 11-7, Section V, Page 9: "The rigor and sophistication of validation should be commensurate with the bank's overall use of models, the complexity and materiality of its models, and the size and complexity of the bank's operations.").
 
 ---
 
-## 7. Final Review and Export of MRM Artifacts
+## 6. Documenting Model Owner's Risk Narrative
 
-The final step for Alex is to consolidate all the collected information into a structured set of artifacts. These documents, including the detailed model registration and the inherent risk assessment, will be formally submitted to the Model Risk Management (MRM) team. This export ensures that all data is traceable, auditable, and ready for the next stages of the MRM process, adhering to the principles of documentation and record-keeping highlighted in SR 11-7 (Section VII, "Conclusion" and Section VI, "Model Inventory").
+### Story + Context + Real-World Relevance
+
+The quantitative score provides a baseline, but Alex's expertise as the Model Owner is crucial for a complete risk picture. Alex must now add a qualitative narrative, elaborating on the model's known limitations, initial mitigation strategies, and any open questions for the MRM team. This narrative serves as the Model Owner's preliminary risk assessment and justification, offering context beyond the numbers. This step directly supports SR 11-7's emphasis on comprehensive documentation and the importance of user insights: "Documentation of model development and validation should be sufficiently detailed so that parties unfamiliar with a model can understand how the model operates, its limitations, and its key assumptions" (SR 11-7, Section VI, Documentation, Page 21).
+
+### Code cell (function definition + function execution)
 
 ```python
-def export_mrm_artifacts(model_details, output_dir="mrm_submission_artifacts"):
+def add_owner_risk_narrative(model_record, owner_risk_narrative, known_limitations=None, initial_mitigations=None, open_questions_for_mrm=None):
     """
-    Exports the comprehensive model registration and risk assessment details
-    into structured JSON and Markdown files.
-    
+    Adds the Model Owner's qualitative risk narrative to the registration record.
+
     Args:
-        model_details (dict): A dictionary containing all collected model metadata.
-        output_dir (str): The directory to save the output files.
+        model_record (dict): The existing model registration dictionary.
+        owner_risk_narrative (str): The Model Owner's summary of the model's risk.
+        known_limitations (list, optional): List of identified limitations of the model.
+        initial_mitigations (list, optional): List of current or planned mitigation actions.
+        open_questions_for_mrm (list, optional): Questions or areas for clarification for the MRM team.
+
+    Returns:
+        dict: The updated model registration dictionary.
     """
-    
-    import os
-    os.makedirs(output_dir, exist_ok=True)
-    
-    model_id = model_details.get('core', {}).get('model_id', 'unknown_id')
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # 1. model_registration.json (contains all core, risk drivers, and assessment summary)
-    full_registration_data = {
-        "model_id": model_details.get('core', {}).get('model_id'),
-        "model_name": model_details.get('core', {}).get('model_name'),
-        "model_version": model_details.get('core', {}).get('model_version'),
-        "owner": model_details.get('core', {}).get('owner'),
-        "registration_timestamp": datetime.now().isoformat(),
-        **model_details.get('core', {}), # Flatten core details
-        **model_details.get('risk_drivers', {}), # Flatten risk drivers
-        "inherent_risk_summary": {
-            "total_score": model_details.get('inherent_risk_assessment', {}).get('total_score'),
-            "proposed_tier": model_details.get('inherent_risk_assessment', {}).get('proposed_tier'),
-            "tier_description": model_details.get('inherent_risk_assessment', {}).get('tier_description'),
-            "scoring_policy_version": model_details.get('inherent_risk_assessment', {}).get('scoring_policy_version'),
-            "assessment_timestamp": model_details.get('inherent_risk_assessment', {}).get('assessment_timestamp'),
-        },
-        "owner_narrative_summary": model_details.get('owner_narrative', {})
-    }
-    
-    registration_json_path = os.path.join(output_dir, f"model_registration_{model_id}_{timestamp}.json")
-    with open(registration_json_path, 'w') as f:
-        json.dump(full_registration_data, f, indent=4)
-        
-    # 2. initial_inherent_risk_assessment.json (focused on risk calculation details)
-    risk_assessment_json_path = os.path.join(output_dir, f"initial_inherent_risk_assessment_{model_id}_{timestamp}.json")
-    with open(risk_assessment_json_path, 'w') as f:
-        json.dump(model_details.get('inherent_risk_assessment', {}), f, indent=4)
+    if len(owner_risk_narrative) < 50: # Basic narrative length validation
+        raise ValueError("Owner risk narrative must be at least 50 characters long for comprehensive assessment.")
 
-    # 3. owner_narrative.md (Markdown file for human readability)
-    narrative_md_path = os.path.join(output_dir, f"owner_narrative_{model_id}_{timestamp}.md")
-    with open(narrative_md_path, 'w') as f:
-        f.write(f"# Model Owner's Initial Risk Narrative for {model_details.get('core', {}).get('model_name')}\n\n")
-        f.write(f"**Model ID:** {model_id}\n")
-        f.write(f"**Owner:** {model_details.get('core', {}).get('owner')}\n")
-        f.write(f"**Date of Assessment:** {datetime.now().strftime('%Y-%m-%d')}\n\n")
-        
-        f.write("## Inherent Risk Summary\n")
-        f.write(f"**Proposed Risk Tier:** {model_details.get('inherent_risk_assessment', {}).get('proposed_tier')}\n")
-        f.write(f"**Total Inherent Risk Score:** {model_details.get('inherent_risk_assessment', {}).get('total_score')}\n")
-        f.write(f"**Tier Description:** {model_details.get('inherent_risk_assessment', {}).get('tier_description')}\n\n")
+    model_record.update({
+        'owner_risk_narrative': owner_risk_narrative,
+        'known_limitations': known_limitations if known_limitations is not None else [],
+        'initial_mitigations': initial_mitigations if initial_mitigations is not None else [],
+        'open_questions_for_mrm': open_questions_for_mrm if open_questions_for_mrm is not None else []
+    })
+    return model_record
 
-        f.write("## Owner's Risk Narrative\n")
-        f.write(model_details.get('owner_narrative', {}).get('owner_risk_narrative', 'No narrative provided.') + "\n\n")
-        
-        f.write("## Immediate Mitigating Factors\n")
-        f.write(model_details.get('owner_narrative', {}).get('immediate_mitigations', 'No immediate mitigations identified.') + "\n\n")
-        
-        f.write("## Open Questions for MRM Team\n")
-        f.write(model_details.get('owner_narrative', {}).get('open_questions_for_mrm', 'No open questions.') + "\n")
-        
-    print(f"Artifacts exported to directory: {output_dir}")
-    print(f"- Full Model Registration (JSON): {registration_json_path}")
-    print(f"- Inherent Risk Assessment (JSON): {risk_assessment_json_path}")
-    print(f"- Owner's Narrative (Markdown): {narrative_md_path}")
-    
-    # Preview the Markdown content
-    display(Markdown("\n---"))
-    display(Markdown("### Preview of `owner_narrative.md` content:"))
-    with open(narrative_md_path, 'r') as f:
-        display(Markdown(f.read()))
+# Alex adds the qualitative risk narrative
+predictive_maintenance_model = add_owner_risk_narrative(
+    predictive_maintenance_model,
+    owner_risk_narrative="The Predictive Maintenance Model, while deployed in real-time, operates in an advisory capacity. Its primary function is to surface potential equipment anomalies for human review, reducing the direct impact of model errors. Data sensitivity is internal, focusing on machine telemetry. The 'Medium' criticality reflects potential operational downtime, not financial loss or regulatory non-compliance.",
+    known_limitations=[
+        "Performance may degrade with significant changes in machine types not seen during training.",
+        "False positives could lead to unnecessary maintenance inspections, increasing operational costs.",
+        "Relies on the quality and uptime of sensor data streams; data gaps could impact prediction accuracy."
+    ],
+    initial_mitigations=[
+        "Regular monitoring of model performance metrics (precision, recall).",
+        "Clear operational procedures for technicians to validate alerts before taking action.",
+        "Redundancy in sensor data collection."
+    ],
+    open_questions_for_mrm=[
+        "What are the specific performance thresholds for a Tier 3 operational model?",
+        "Are there any specific data governance requirements for internal machine telemetry data?"
+    ]
+)
 
-
-# Check if all necessary parts of the global_model_metadata are populated
-if 'core' in global_model_metadata and 'risk_drivers' in global_model_metadata and 'inherent_risk_assessment' in global_model_metadata and 'owner_narrative' in global_model_metadata:
-    export_mrm_artifacts(global_model_metadata)
-    display(HTML("<hr>"))
-    display(Markdown("### All MRM artifacts successfully generated and saved. This concludes the initial model registration and self-assessment for the Predictive Maintenance Model."))
-else:
-    display(Markdown("Please complete all previous sections to generate the full set of MRM artifacts."))
+print(json.dumps(predictive_maintenance_model, indent=2))
 ```
 
 ### Explanation of Execution
 
-Alex has successfully compiled and exported all the required MRM artifacts. The JSON files provide machine-readable structured data for integration into enterprise systems, while the Markdown narrative offers a human-readable summary for MRM team review. This comprehensive package, complete with timestamps and policy versions, demonstrates adherence to Industrial Innovations Corp.'s MRM policies and the principles of transparency and auditability derived from SR 11-7. This deliverable serves as the official submission to formally initiate the MRM review process for the Predictive Maintenance Model.
+Alex's detailed narrative provides invaluable context for the MRM team. It explains *why* the model's inherent risk factors were assessed the way they were and highlights practical considerations. For example, Alex notes the model's "advisory capacity," which implicitly reduces its overall risk impact despite a "Real-time" deployment. This qualitative input complements the quantitative score, offering a more nuanced and complete risk profile, in line with SR 11-7's guidance on understanding model capabilities and limitations (SR 11-7, Section III, Page 3). It also creates a structured artifact for further MRM review, fostering "effective challenge."
 
+---
+
+## 7. Finalizing and Exporting the Model Registration Packet
+
+### Story + Context + Real-World Relevance
+
+As the final step, Alex consolidates all the collected metadata, the calculated risk score and tier, and the risk narrative into a single, structured "Model Registration Packet." This artifact is the formal deliverable of the self-assessment process and will be submitted to TechCo's Model Risk Management (MRM) team. Exporting this comprehensive record ensures that all information is consistently captured and readily available for the next stages of the MRM lifecycle (e.g., formal tiering by the Second Line of Defense). This process directly supports SR 11-7's requirement for comprehensive model inventory and detailed documentation for auditability and governance (SR 11-7, Section VI, Page 20: "Banks should maintain a comprehensive set of information for models implemented for use...").
+
+### Code cell (function definition + function execution)
+
+```python
+def export_model_registration_packet(model_data, output_filepath="model_registration_packet.json"):
+    """
+    Exports the complete model registration data, including self-assessment, to a JSON file.
+
+    Args:
+        model_data (dict): The complete model registration dictionary.
+        output_filepath (str): The path to save the JSON file.
+    """
+    model_data['submitted_at'] = datetime.datetime.now().isoformat()
+    model_data['status'] = 'Initial Self-Assessment Submitted'
+
+    with open(output_filepath, 'w') as f:
+        json.dump(model_data, f, indent=4)
+    print(f"Model Registration Packet successfully exported to '{output_filepath}'")
+
+# Define the output file path
+output_file = f"model_registration_predictive_maintenance_{predictive_maintenance_model['version']}.json"
+
+# Alex exports the completed registration packet
+export_model_registration_packet(predictive_maintenance_model, output_filepath=output_file)
+
+# Display the final packet structure
+print("\n--- Final Model Registration Packet Content ---")
+print(json.dumps(predictive_maintenance_model, indent=2))
+```
+
+### Explanation of Execution
+
+Alex has successfully generated the complete Model Registration Packet as a JSON file. This file contains all the necessary metadata, the calculated initial risk score, the proposed preliminary tier, and the qualitative risk narrative. This artifact is a tangible representation of the Model Owner's proactive engagement with MRM requirements. It provides a standardized, machine-readable format for the handover to the MRM team (Second Line of Defense), facilitating their formal review and tier validation process. This systematic approach embodies the spirit of SR 11-7 by embedding risk considerations at the source, ensuring that model risks are understood and documented from the earliest stages of development and implementation.
