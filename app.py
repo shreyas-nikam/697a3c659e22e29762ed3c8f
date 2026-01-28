@@ -1,3 +1,5 @@
+# Lab 1
+
 import streamlit as st
 import pandas as pd
 import json
@@ -75,7 +77,7 @@ def render_model_risk_report(data):
         df_breakdown = pd.DataFrame(breakdown_items)
         st.dataframe(
             df_breakdown,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config={
                 "Risk Points": st.column_config.NumberColumn(format="%d")
@@ -136,7 +138,7 @@ def render_model_risk_report(data):
                     "Description": details.get("description")
                 })
             st.dataframe(pd.DataFrame(t_data), hide_index=True,
-                         use_container_width=True)
+                         width='stretch')
 
         # 2. Scoring Matrix (Converted from JSON to Tables)
         st.markdown("#### Scoring Reference Matrix")
@@ -157,7 +159,7 @@ def render_model_risk_report(data):
                 st.dataframe(
                     score_df,
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     column_config={
                         "Points": st.column_config.NumberColumn(format="%d")
                     }
