@@ -4,14 +4,18 @@ import json
 import uuid
 import datetime
 from source import (
+    REQUIRED_FIELDS,
     RISK_SCORING_TABLE,
     TIER_THRESHOLDS,
     SCORING_VERSION,
-    register_model_metadata,
-    calculate_inherent_risk
+    DOMAIN_OPTIONS,
+    MODEL_TYPE_OPTIONS,
+    DEPLOYMENT_MODE_OPTIONS,
+    assess_model_risk,
 )
 
-st.set_page_config(page_title="QuLab: First Line - Model Owner's Initial Model Registration & Self-Assessment", layout="wide")
+st.set_page_config(
+    page_title="QuLab: First Line - Model Owner's Initial Model Registration & Self-Assessment", layout="wide")
 st.sidebar.image("https://www.quantuniversity.com/assets/img/logo5.jpg")
 st.sidebar.divider()
 st.title("QuLab: First Line - Model Owner's Initial Model Registration & Self-Assessment")
@@ -23,9 +27,12 @@ if 'current_page' not in st.session_state:
 if 'model_registered' not in st.session_state:
     st.session_state['model_registered'] = False
 if 'model_details' not in st.session_state:
-    st.session_state['model_details'] = {} # Stores all registration inputs and audit fields
+    # Stores all registration inputs and audit fields
+    st.session_state['model_details'] = {}
 if 'owner_risk_narrative' not in st.session_state:
     st.session_state['owner_risk_narrative'] = ""
+if "owner_risk_narrative_input" not in st.session_state:
+    st.session_state["owner_risk_narrative_input"] = ""
 if 'mitigations_proposed' not in st.session_state:
     st.session_state['mitigations_proposed'] = ""
 if 'open_questions' not in st.session_state:
@@ -36,14 +43,15 @@ if 'export_artifact' not in st.session_state:
 # --- Sidebar Navigation ---
 with st.sidebar:
     st.markdown(f"## Navigation")
-    page_options = ["1) Model Registration", "2) Risk Score Preview", "3) Narrative & Export"]
-    
+    page_options = ["1) Model Registration",
+                    "2) Risk Score Preview", "3) Narrative & Export"]
+
     # Determine index safely
     try:
         current_index = page_options.index(st.session_state['current_page'])
     except ValueError:
         current_index = 0
-        
+
     st.session_state['current_page'] = st.selectbox(
         "Choose a page",
         page_options,
@@ -56,95 +64,100 @@ if st.session_state['current_page'] == '1) Model Registration':
     st.markdown(f"---")
     st.markdown(f"As a **System / Model Owner** at Apex Financial Services, your role is crucial in ensuring the responsible and compliant deployment of AI models. Today, you are tasked with registering a new AI model (e.g., a Predictive Maintenance Model) into the enterprise model inventory. This is not just a bureaucratic step; it's a fundamental part of our Model Risk Management (MRM) framework, directly addressing the principles outlined in **SR Letter 11-7**.")
     st.markdown(f"")
-    st.markdown(f"SR 11-7 emphasizes the importance of robust model development, implementation, and use, as well as comprehensive governance, policies, and controls. Specifically, Section IV (\"Model Development, Implementation, and Use\") highlights the need for disciplined processes, while Section VI (\"Governance, Policies, and Controls\") mandates maintaining a \"comprehensive set of information for models implemented for use\" (Page 20). Your initial model registration and self-assessment are the first line of defense, ensuring that potential model risks are identified and understood from the earliest stages of the model lifecycle. This proactive engagement helps us embed risk considerations at the source, saving time and reducing rework later, and fostering a culture of responsible AI.")
+    st.markdown(f"SR 11-7 emphasizes the importance of robust model development, implementation, and use, as well as comprehensive governance, policies, and controls. Specifically, Section IV (\"Model Development, Implementation, and Use\") highlights the need for disciplined processes, while Section VI (\"Governance, Policies, and Controls\") mandates maintaining a \"comprehensive set of information for models implemented for use\". Your initial model registration and self-assessment are the first line of defense, ensuring that potential model risks are identified and understood from the earliest stages of the model lifecycle. This proactive engagement helps us embed risk considerations at the source, saving time and reducing rework later, and fostering a culture of responsible AI.")
     st.markdown(f"")
     st.markdown(f"This page guides you through a simulated model registration interface, allowing you to input essential model metadata and then perform an initial, conceptual self-assessment of the model's inherent risk.")
     st.markdown(f"")
     st.markdown(f"---")
     st.markdown(f"### **SR 11-7 Key Principles Addressed:**")
-    st.markdown(f"- **Model Documentation:** Capturing comprehensive metadata about the model is essential for transparency and auditability (SR 11-7, Page 21).")
-    st.markdown(f"- **Early Risk Thinking:** Identifying and assessing inherent risk characteristics at the registration stage ensures proactive management of potential adverse consequences (SR 11-7, Page 3).")
-    st.markdown(f"- **Model Inventory:** Contributing to the firm-wide inventory of models by providing structured information about new models (SR 11-7, Page 20).")
-    st.markdown(f"- **Owner Responsibilities:** As a Model Owner, you are accountable for providing accurate information and an initial risk assessment (SR 11-7, Page 18).")
+    st.markdown(f"- **Model Documentation:** Capturing comprehensive metadata about the model is essential for transparency and auditability.")
+    st.markdown(f"- **Early Risk Thinking:** Identifying and assessing inherent risk characteristics at the registration stage ensures proactive management of potential adverse consequences.")
+    st.markdown(f"- **Model Inventory:** Contributing to the firm-wide inventory of models by providing structured information about new models.")
+    st.markdown(f"- **Owner Responsibilities:** As a Model Owner, you are accountable for providing accurate information and an initial risk assessment.")
     st.markdown(f"---")
 
     st.markdown(f"## 1. Register Your AI Model: Metadata Input")
-    st.markdown(f"As the Model Owner, your first task is to input the comprehensive metadata for your model. This detailed documentation is critical, as highlighted in SR 11-7 Section VI (\"Governance, Policies, and Controls\") and specifically regarding \"Model Inventory\" (Page 20), which states, \"Without adequate documentation, model risk assessment and management will be ineffective.\" This initial data forms the foundation for all subsequent MRM activities, ensuring clarity on the model's purpose, scope, and technical characteristics.")
+    st.markdown(f"As the Model Owner, your first task is to input the comprehensive metadata for your model. This detailed documentation is critical, as highlighted in SR 11-7 Section VI (\"Governance, Policies, and Controls\") and specifically regarding \"Model Inventory\", which states, \"Without adequate documentation, model risk assessment and management will be ineffective.\" This initial data forms the foundation for all subsequent MRM activities, ensuring clarity on the model's purpose, scope, and technical characteristics.")
     st.markdown(f"")
     st.markdown(f"Please define your model's attributes below. Pay close attention to the controlled vocabularies for risk factors (marked with '⚡'), as these will directly influence the inherent risk score.")
     st.markdown(f"")
 
-    with st.form("registration_form"):
-        st.markdown(f"### Model Core Details")
-        col1, col2 = st.columns(2)
-        with col1:
-            model_name = st.text_input("Model Name (e.g., Predictive Maintenance Model v2.1)*", value=st.session_state['model_details'].get('model_name', ''))
-            
-            domain_opts = ['Operations Efficiency', 'Credit Risk', 'Market Risk', 'Fraud Detection', 'Customer Segmentation', 'Compliance', 'Other']
-            domain_idx = domain_opts.index(st.session_state['model_details'].get('domain')) if st.session_state['model_details'].get('domain') in domain_opts else 0
-            domain = st.selectbox("Domain*", options=domain_opts, index=domain_idx)
-            
-            type_opts = ['ML classifier (time-series)', 'Regression', 'Decision Tree', 'Neural Network', 'Statistical (e.g., ARIMA)', 'Expert Rule-based', 'Other']
-            type_idx = type_opts.index(st.session_state['model_details'].get('model_type')) if st.session_state['model_details'].get('model_type') in type_opts else 0
-            model_type = st.selectbox("Model Type*", options=type_opts, index=type_idx)
-            
-            dep_opts = ['Real-time', 'Batch', 'Offline Analysis']
-            dep_idx = dep_opts.index(st.session_state['model_details'].get('deployment_mode')) if st.session_state['model_details'].get('deployment_mode') in dep_opts else 0
-            deployment_mode = st.selectbox("Deployment Mode*", options=dep_opts, index=dep_idx)
-            
-            owner_team = st.text_input("Owner Team (Optional)", value=st.session_state['model_details'].get('owner_team', ''))
-        with col2:
-            business_use = st.text_area("Business Use & Objective*", height=150, value=st.session_state['model_details'].get('business_use', ''))
-            
-            stage_opts = ['Proof of Concept', 'Development', 'Pre-Production', 'Production', 'Retired']
-            stage_idx = stage_opts.index(st.session_state['model_details'].get('model_stage')) if st.session_state['model_details'].get('model_stage') in stage_opts else 0
-            model_stage = st.selectbox("Model Stage (Optional)", options=stage_opts, index=stage_idx)
-            
-            deployment_region = st.text_input("Deployment Region (Optional)", value=st.session_state['model_details'].get('deployment_region', ''))
+    t1, t2 = st.tabs(["Model Registration Form", "Import from JSON"])
+    with t1:
 
-        st.markdown(f"### Inherent Risk Factors ⚡")
-        st.markdown(f"Please select the characteristics that best describe your model's inherent risk profile. These selections directly feed into the risk scoring engine.")
-        col3, col4 = st.columns(2)
-        
-        # Helper to get safe index
-        def get_idx(options, key):
-            val = st.session_state['model_details'].get(key)
-            return list(options).index(val) if val in options else 0
+        with st.form("registration_form"):
+            st.markdown(f"### Model Core Details")
+            col1, col2 = st.columns(2)
+            with col1:
+                model_name = st.text_input("Model Name (e.g., Predictive Maintenance Model v2.1)*",
+                                           value=st.session_state['model_details'].get('model_name', ''))
 
-        with col3:
-            crit_opts = list(RISK_SCORING_TABLE['decision_criticality'].keys())
-            decision_criticality = st.selectbox("Decision Criticality*", options=crit_opts, index=get_idx(crit_opts, 'decision_criticality'))
-            
-            sens_opts = list(RISK_SCORING_TABLE['data_sensitivity'].keys())
-            data_sensitivity = st.selectbox("Data Sensitivity*", options=sens_opts, index=get_idx(sens_opts, 'data_sensitivity'))
-        with col4:
-            auto_opts = list(RISK_SCORING_TABLE['automation_level'].keys())
-            automation_level = st.selectbox("Automation Level*", options=auto_opts, index=get_idx(auto_opts, 'automation_level'))
-            
-            reg_opts = list(RISK_SCORING_TABLE['regulatory_materiality'].keys())
-            regulatory_materiality = st.selectbox("Regulatory Materiality*", options=reg_opts, index=get_idx(reg_opts, 'regulatory_materiality'))
+                domain_opts = DOMAIN_OPTIONS
+                domain_idx = domain_opts.index(st.session_state['model_details'].get(
+                    'domain')) if st.session_state['model_details'].get('domain') in domain_opts else 0
+                domain = st.selectbox(
+                    "Domain*", options=domain_opts, index=domain_idx)
 
-        submitted = st.form_submit_button("Register Model & Assess Risk")
+                type_opts = MODEL_TYPE_OPTIONS
+                type_idx = type_opts.index(st.session_state['model_details'].get(
+                    'model_type')) if st.session_state['model_details'].get('model_type') in type_opts else 0
+                model_type = st.selectbox(
+                    "Model Type*", options=type_opts, index=type_idx)
 
-        if submitted:
-            required_fields_check = {
-                'model_name': model_name,
-                'business_use': business_use,
-                'domain': domain,
-                'model_type': model_type,
-                'decision_criticality': decision_criticality,
-                'data_sensitivity': data_sensitivity,
-                'automation_level': automation_level,
-                'regulatory_materiality': regulatory_materiality,
-                'deployment_mode': deployment_mode
-            }
+                dep_opts = DEPLOYMENT_MODE_OPTIONS
+                dep_idx = dep_opts.index(st.session_state['model_details'].get(
+                    'deployment_mode')) if st.session_state['model_details'].get('deployment_mode') in dep_opts else 0
+                deployment_mode = st.selectbox(
+                    "Deployment Mode*", options=dep_opts, index=dep_idx)
 
-            missing_fields = [field for field, value in required_fields_check.items() if not value]
+                owner_team = st.text_input(
+                    "Owner Team (Optional)", value=st.session_state['model_details'].get('owner_team', ''))
+            with col2:
+                business_use = st.text_area("Business Use & Objective*", height=150,
+                                            value=st.session_state['model_details'].get('business_use', ''))
 
-            if missing_fields:
-                st.error(f"Please fill in all required fields (marked with '*'). Missing: {', '.join(missing_fields)}")
-            else:
-                raw_model_details = {
+                stage_opts = ['Proof of Concept', 'Development',
+                              'Pre-Production', 'Production', 'Retired']
+                stage_idx = stage_opts.index(st.session_state['model_details'].get(
+                    'model_stage')) if st.session_state['model_details'].get('model_stage') in stage_opts else 0
+                model_stage = st.selectbox(
+                    "Model Stage (Optional)", options=stage_opts, index=stage_idx)
+
+                deployment_region = st.text_input(
+                    "Deployment Region (Optional)", value=st.session_state['model_details'].get('deployment_region', ''))
+
+            st.markdown(f"### Inherent Risk Factors ⚡")
+            st.markdown(f"Please select the characteristics that best describe your model's inherent risk profile. These selections directly feed into the risk scoring engine.")
+            col3, col4 = st.columns(2)
+
+            # Helper to get safe index
+            def get_idx(options, key):
+                val = st.session_state['model_details'].get(key)
+                return list(options).index(val) if val in options else 0
+
+            with col3:
+                crit_opts = list(
+                    RISK_SCORING_TABLE['decision_criticality'].keys())
+                decision_criticality = st.selectbox(
+                    "Decision Criticality*", options=crit_opts, index=get_idx(crit_opts, 'decision_criticality'))
+
+                sens_opts = list(RISK_SCORING_TABLE['data_sensitivity'].keys())
+                data_sensitivity = st.selectbox(
+                    "Data Sensitivity*", options=sens_opts, index=get_idx(sens_opts, 'data_sensitivity'))
+            with col4:
+                auto_opts = list(RISK_SCORING_TABLE['automation_level'].keys())
+                automation_level = st.selectbox(
+                    "Automation Level*", options=auto_opts, index=get_idx(auto_opts, 'automation_level'))
+
+                reg_opts = list(
+                    RISK_SCORING_TABLE['regulatory_materiality'].keys())
+                regulatory_materiality = st.selectbox(
+                    "Regulatory Materiality*", options=reg_opts, index=get_idx(reg_opts, 'regulatory_materiality'))
+
+            submitted = st.form_submit_button("Register Model & Assess Risk")
+
+            if submitted:
+                required_fields_check = {
                     'model_name': model_name,
                     'business_use': business_use,
                     'domain': domain,
@@ -152,77 +165,154 @@ if st.session_state['current_page'] == '1) Model Registration':
                     'decision_criticality': decision_criticality,
                     'data_sensitivity': data_sensitivity,
                     'automation_level': automation_level,
-                    'deployment_mode': deployment_mode,
                     'regulatory_materiality': regulatory_materiality,
-                    'owner_team': owner_team if owner_team else None,
-                    'model_stage': model_stage if model_stage else None,
-                    'deployment_region': deployment_region if deployment_region else None,
-                    'model_id': st.session_state['model_details'].get('model_id') # Preserve ID if already generated
+                    'deployment_mode': deployment_mode
                 }
 
-                try:
-                    registered_model_output = register_model_metadata(raw_model_details)
-                    risk_assessment_output = calculate_inherent_risk(
-                        registered_model_output, RISK_SCORING_TABLE, TIER_THRESHOLDS, SCORING_VERSION
-                    )
-                    st.session_state['model_details'] = {**registered_model_output, **risk_assessment_output}
-                    st.session_state['model_registered'] = True
-                    st.success("Model registered and risk assessed successfully! Proceed to 'Risk Score Preview'.")
-                    st.session_state['current_page'] = '2) Risk Score Preview'
-                    st.rerun() # Rerun to switch page immediately
-                except ValueError as e:
-                    st.error(f"Error during registration or assessment: {e}")
+                missing_fields = [field for field,
+                                  value in required_fields_check.items() if not value]
 
+                if missing_fields:
+                    st.error(
+                        f"Please fill in all required fields (marked with '*'). Missing: {', '.join(missing_fields)}")
+                else:
+                    raw_model_details = {
+                        'model_name': model_name,
+                        'business_use': business_use,
+                        'domain': domain,
+                        'model_type': model_type,
+                        'decision_criticality': decision_criticality,
+                        'data_sensitivity': data_sensitivity,
+                        'automation_level': automation_level,
+                        'deployment_mode': deployment_mode,
+                        'regulatory_materiality': regulatory_materiality,
+                        'owner_team': owner_team if owner_team else None,
+                        'model_stage': model_stage if model_stage else None,
+                        'deployment_region': deployment_region if deployment_region else None,
+                        # Preserve ID if already generated
+                        'model_id': st.session_state['model_details'].get('model_id')
+                    }
+
+                    try:
+                        final_model_record = assess_model_risk(
+                            raw_model_details)
+                        st.session_state["model_details"] = final_model_record
+                        st.session_state['model_registered'] = True
+                        st.success(
+                            "Model registered and risk assessed successfully! Proceed to 'Risk Score Preview'.")
+                        st.session_state['current_page'] = '2) Risk Score Preview'
+                        st.rerun()  # Rerun to switch page immediately
+                    except ValueError as e:
+                        st.error(f"Validation error: {e}")
+                        st.info(
+                            f"Required fields: {', '.join(REQUIRED_FIELDS)}")
+
+    with t2:
+        uploaded_artifact = st.file_uploader(
+            "Upload a Lab 1 exported JSON to resume/edit",
+            type=["json"],
+            key="import_uploader"
+        )
+
+        def _safe_get(dct, key, default=None):
+            return dct.get(key, default) if isinstance(dct, dict) else default
+
+        if uploaded_artifact is not None:
+            try:
+                imported = json.load(uploaded_artifact)
+
+                # --- Minimal validation (keep strict enough to avoid junk) ---
+                if _safe_get(imported, "export_format_version") != "lab1_export_v1":
+                    st.error(
+                        "This doesn't look like a Lab 1 export (export_format_version mismatch).")
+                elif not _safe_get(imported, "model_id") or not _safe_get(imported, "model_name"):
+                    st.error("Invalid artifact: missing model_id/model_name.")
+                else:
+                    # Load into session for form pre-fill + downstream pages
+                    st.session_state["model_details"] = imported
+                    st.session_state["model_registered"] = True
+
+                    # Load narrative fields too (so Page 3 is prefilled)
+                    st.session_state["owner_risk_narrative"] = _safe_get(
+                        imported, "owner_risk_narrative", "") or ""
+                    st.session_state["mitigations_proposed"] = _safe_get(
+                        imported, "mitigations_proposed", "") or ""
+                    st.session_state["open_questions"] = _safe_get(
+                        imported, "open_questions", "") or ""
+
+                    st.success(
+                        f"Loaded: {imported['model_name']} (ID: {imported['model_id']})")
+
+                    # Optional: jump user to preview immediately
+                    if st.button("Go to Risk Score Preview"):
+                        st.session_state["current_page"] = "2) Risk Score Preview"
+                        st.rerun()
+
+            except Exception as e:
+                st.error(f"Could not read JSON: {e}")
 # --- Page: 2) Risk Score Preview ---
 elif st.session_state['current_page'] == '2) Risk Score Preview':
     st.markdown(f"# 🔍 Inherent Risk Score Preview")
     st.markdown(f"---")
-    st.markdown(f"With the model metadata captured, the next step is to perform the initial inherent risk self-assessment. This involves applying the predefined scoring logic to the model's characteristics (e.g., `decision_criticality`, `data_sensitivity`). This step allows you to \"assess the magnitude\" of model risk, a core activity in model risk management according to SR 11-7 (Page 4). Understanding the inherent risk helps in determining the appropriate level of scrutiny and governance required for the model.")
+    st.markdown(f"With the model metadata captured, the next step is to perform the initial inherent risk self-assessment. This involves applying the predefined scoring logic to the model's characteristics (e.g., `decision_criticality`, `data_sensitivity`). This step allows you to \"assess the magnitude\" of model risk, a core activity in model risk management according to SR 11-7. Understanding the inherent risk helps in determining the appropriate level of scrutiny and governance required for the model.")
     st.markdown(f"")
     st.markdown(f"Apex Financial Services uses a rule-based system to calculate an initial inherent risk score and assign a preliminary risk tier. This system considers several key factors defined by SR 11-7 and internal policies, helping us quantify the \"magnitude\" of model risk based on factors like \"model complexity, higher uncertainty about inputs and assumptions, broader use, and larger potential impact\" (SR 11-7, Page 4).")
     st.markdown(f"---")
-    
+
     if not st.session_state['model_registered']:
-        st.warning("Please complete the 'Model Registration' page first to see the risk score preview.")
+        st.warning(
+            "Please complete the 'Model Registration' page first to see the risk score preview.")
     else:
         st.markdown(f"## 2. Your Model's Inherent Risk Assessment Results")
 
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Inherent Risk Score", value=st.session_state['model_details'].get('inherent_risk_score'))
+            st.metric("Inherent Risk Score", value=st.session_state['model_details'].get(
+                'inherent_risk_score'))
         with col2:
-            st.metric("Proposed Risk Tier", value=f"{st.session_state['model_details'].get('proposed_risk_tier')} - {st.session_state['model_details'].get('proposed_tier_description', '')}")
+            st.metric("Proposed Risk Tier",
+                      value=f"{st.session_state['model_details'].get('proposed_risk_tier')} - {st.session_state['model_details'].get('proposed_tier_description', '')}")
 
         st.markdown(f"---")
         st.markdown(f"### Scoring Methodology")
         st.markdown(f"Our framework assigns points to specific categorical values for each risk factor. The total inherent risk score is then calculated as the sum of points from each factor.")
-        st.markdown(r"$$ S_{total} = \sum_{f \in \text{Factors}} P(V_f) $$")
+        st.markdown(r"""$$ 
+S_{total} = \sum_{f \in \text{Factors}} P(V_f) 
+$$""")
         st.markdown(r"where $S_{total}$ is the total inherent risk score, $f$ represents a risk factor (e.g., decision criticality), and $P(V_f)$ is the points assigned to the chosen value $V_f$ for that factor.")
         st.markdown(f"")
-        st.markdown(f"The preliminary risk tier is determined by comparing $S_{total}$ against predefined thresholds, as shown in the table below.")
+        st.markdown(
+            r"The preliminary risk tier is determined by comparing $S_{total}$ against predefined thresholds, as shown in the table below.")
 
-        st.markdown(f"#### Risk Factor Scoring Table (Version: `{st.session_state['model_details'].get('scoring_version', SCORING_VERSION)}`)")
+        st.markdown(
+            f"#### Risk Factor Scoring Table (Version: `{st.session_state['model_details'].get('scoring_version', SCORING_VERSION)}`)")
         # Reformat RISK_SCORING_TABLE for better display
-        scoring_df = pd.DataFrame(RISK_SCORING_TABLE).fillna('-').T
-        scoring_df.index.name = 'Risk Factor'
-        st.dataframe(scoring_df, use_container_width=True)
+        rows = []
+        for factor, mapping in RISK_SCORING_TABLE.items():
+            for category, points in mapping.items():
+                rows.append(
+                    {"Risk Factor": factor, "Category": category, "Points": points})
+        scoring_long_df = pd.DataFrame(rows)
+        st.dataframe(scoring_long_df, width='stretch')
 
         st.markdown(f"#### Proposed Risk Tier Thresholds")
         tier_df = pd.DataFrame.from_dict(TIER_THRESHOLDS, orient='index')
         tier_df.index.name = 'Tier'
-        st.dataframe(tier_df, use_container_width=True)
+        st.dataframe(tier_df, width='stretch')
 
         st.markdown(f"---")
         st.markdown(f"### Score Breakdown by Factor")
-        st.markdown(f"This table and chart illustrate how each selected model characteristic contributed to the overall inherent risk score.")
+        st.markdown(
+            f"This table and chart illustrate how each selected model characteristic contributed to the overall inherent risk score.")
 
-        score_breakdown_data = st.session_state['model_details'].get('score_breakdown', {})
+        score_breakdown_data = st.session_state['model_details'].get(
+            'score_breakdown', {})
         if score_breakdown_data:
             breakdown_df = pd.DataFrame([
                 {'Factor': k, 'Value': v['value'], 'Points': v['points']}
                 for k, v in score_breakdown_data.items()
             ])
-            st.dataframe(breakdown_df, use_container_width=True)
+            st.dataframe(breakdown_df, width='stretch')
 
             # Bar chart
             st.markdown(f"#### Points Contribution Bar Chart")
@@ -270,7 +360,8 @@ elif st.session_state['current_page'] == '3) Narrative & Export':
         narrative_min_length = 50
         is_narrative_valid = len(owner_risk_narrative) >= narrative_min_length
         if not is_narrative_valid:
-            st.warning(f"Owner's Inherent Risk Narrative must be at least {narrative_min_length} characters long.")
+            st.warning(
+                f"Owner's Inherent Risk Narrative must be at least {narrative_min_length} characters long.")
 
         st.markdown(f"---")
         st.markdown(f"## 4. Export Model Registration Artifact")
@@ -305,7 +396,8 @@ elif st.session_state['current_page'] == '3) Narrative & Export':
         )
 
         if download_button_disabled:
-            st.info("Please register a model and provide a valid narrative to enable download.")
+            st.info(
+                "Please register a model and provide a valid narrative to enable download.")
 
 # License
 st.caption('''

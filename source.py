@@ -1,10 +1,24 @@
+import hashlib
 import uuid
 import datetime
 import json
 import pandas as pd
 # IPython.display is removed from core module imports as it's a UI/notebook-specific dependency.
 # It can be re-imported in __main__ block for demonstration or handled by the consuming app.
+LAB_VERSION = "1.0"
+EXPORT_FORMAT_VERSION = "lab1_export_v1"
 
+REQUIRED_FIELDS = [
+    "model_name",
+    "business_use",
+    "domain",
+    "model_type",
+    "deployment_mode",              # ADD THIS
+    "decision_criticality",
+    "data_sensitivity",
+    "automation_level",
+    "regulatory_materiality",
+]
 # Define the scoring logic for inherent risk factors
 # Each factor's categories are mapped to points
 RISK_SCORING_TABLE = {
@@ -32,15 +46,39 @@ RISK_SCORING_TABLE = {
     }
 }
 
+DOMAIN_OPTIONS = [
+    "Operations Efficiency", "Credit Risk", "Market Risk",
+    "Fraud Detection", "Customer Segmentation", "Compliance", "Other"
+]
+MODEL_TYPE_OPTIONS = [
+    "ML classifier (time-series)", "Regression", "Decision Tree",
+    "Neural Network", "Statistical (e.g., ARIMA)", "Expert Rule-based", "Other"
+]
+DEPLOYMENT_MODE_OPTIONS = ["Real-time", "Batch", "Offline Analysis"]
+
 # Define the thresholds for risk tiers
 # Lower score means lower risk tier (e.g., Tier 3 is lowest risk)
 TIER_THRESHOLDS = {
-    'Tier 3': {'max_score': 8, 'description': 'Low Risk: Minimal impact, well-understood, or highly controlled.'},
-    'Tier 2': {'max_score': 15, 'description': 'Medium Risk: Moderate impact, requires standard MRM oversight.'},
-    'Tier 1': {'max_score': float('inf'), 'description': 'High Risk: Significant impact, requires extensive MRM oversight.'}
+    "Tier 1": {"min_score": 16, "description": "High Risk: Significant impact, requires extensive MRM oversight."},
+    "Tier 2": {"min_score": 9,  "description": "Medium Risk: Moderate impact, requires standard MRM oversight."},
+    "Tier 3": {"min_score": 0,  "description": "Low Risk: Minimal impact, well-understood, or highly controlled."},
 }
 
 SCORING_VERSION = "v1.0"
+
+
+def scoring_config_snapshot() -> dict:
+    return {
+        "scoring_version": SCORING_VERSION,
+        "risk_scoring_table": RISK_SCORING_TABLE,
+        "tier_thresholds": TIER_THRESHOLDS,
+    }
+
+
+def scoring_config_hash(snapshot: dict) -> str:
+    payload = json.dumps(snapshot, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
 
 def register_model_metadata(model_details: dict) -> dict:
     """
@@ -57,12 +95,18 @@ def register_model_metadata(model_details: dict) -> dict:
         ValueError: If required fields are missing/empty or if invalid values
                     are provided for risk factors.
     """
+    if model_details.get("domain") not in DOMAIN_OPTIONS:
+        raise ValueError(
+            f"Invalid domain '{model_details.get('domain')}'. Allowed: {', '.join(DOMAIN_OPTIONS)}")
+    if model_details.get("model_type") not in MODEL_TYPE_OPTIONS:
+        raise ValueError(
+            f"Invalid model_type '{model_details.get('model_type')}'. Allowed: {', '.join(MODEL_TYPE_OPTIONS)}")
+    if model_details.get("deployment_mode") not in DEPLOYMENT_MODE_OPTIONS:
+        raise ValueError(
+            f"Invalid deployment_mode '{model_details.get('deployment_mode')}'. Allowed: {', '.join(DEPLOYMENT_MODE_OPTIONS)}")
+
     # Validate required fields
-    required_fields = [
-        'model_name', 'business_use', 'domain', 'model_type',
-        'decision_criticality', 'data_sensitivity', 'automation_level',
-        'regulatory_materiality'
-    ]
+    required_fields = REQUIRED_FIELDS
     for field in required_fields:
         if field not in model_details or not model_details[field]:
             raise ValueError(f"Required field '{field}' is missing or empty.")
@@ -81,11 +125,14 @@ def register_model_metadata(model_details: dict) -> dict:
         registered_details['model_id'] = str(uuid.uuid4())
 
     # Add audit fields
-    registered_details['created_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    registered_details['created_by'] = registered_details.get('created_by', 'System/Unknown Owner') # Allow override, default if not provided
-    registered_details['lab_version'] = '1.0' # Or make this dynamic if needed
+    registered_details['created_at'] = datetime.datetime.now(
+        datetime.timezone.utc).isoformat()
+    registered_details['created_by'] = registered_details.get(
+        'created_by', 'System/Unknown Owner')  # Allow override, default if not provided
+    registered_details['lab_version'] = '1.0'  # Or make this dynamic if needed
 
     return registered_details
+
 
 def calculate_inherent_risk(model_metadata: dict, scoring_table: dict, tier_thresholds: dict, scoring_version: str) -> dict:
     """
@@ -114,30 +161,34 @@ def calculate_inherent_risk(model_metadata: dict, scoring_table: dict, tier_thre
                 score_breakdown[factor] = {'value': value, 'points': points}
             else:
                 score_breakdown[factor] = {'value': value, 'points': 0,
-                                            'warning': 'Value not found in scoring map for this factor.'}
+                                           'warning': 'Value not found in scoring map for this factor.'}
         else:
             score_breakdown[factor] = {'value': 'N/A', 'points': 0,
-                                        'warning': f'Factor "{factor}" not in model metadata, cannot score.'}
+                                       'warning': f'Factor "{factor}" not in model metadata, cannot score.'}
 
     proposed_risk_tier = 'Undefined'
     tier_description = 'No tier assigned or thresholds not met.'
     # Sort tiers by max_score to ensure correct assignment for overlapping ranges, if any.
     # In this case, Tier 3 -> Tier 2 -> Tier 1 is already ordered by max_score ascending.
-    sorted_tiers = sorted(tier_thresholds.items(), key=lambda item: item[1]['max_score'])
-
+    sorted_tiers = sorted(tier_thresholds.items(),
+                          key=lambda item: item[1]["min_score"], reverse=True)
     for tier, data in sorted_tiers:
-        if inherent_risk_score <= data['max_score']:
+        if inherent_risk_score >= data["min_score"]:
             proposed_risk_tier = tier
-            tier_description = data['description']
+            tier_description = data["description"]
             break
+
+    config = scoring_config_snapshot()
 
     return {
         'inherent_risk_score': inherent_risk_score,
         'proposed_risk_tier': proposed_risk_tier,
         'proposed_tier_description': tier_description,
         'score_breakdown': score_breakdown,
+        'scoring_config': config,
         'scoring_version': scoring_version
     }
+
 
 def assess_model_risk(raw_model_details: dict) -> dict:
     """
@@ -178,88 +229,5 @@ def assess_model_risk(raw_model_details: dict) -> dict:
         raise e
     except Exception as e:
         # Catch any other unexpected errors during the process
-        raise RuntimeError(f"An unexpected error occurred during model risk assessment: {e}")
-
-# --- Example Usage (typically in an app.py or a main script) ---
-if __name__ == "__main__":
-    from IPython.display import display, Markdown # Import here for demonstration purposes only
-
-    # Display the scoring table and tier thresholds for transparency
-    display(Markdown("### Inherent Risk Scoring Table"))
-    display(pd.DataFrame(RISK_SCORING_TABLE).fillna('-').T)
-
-    display(Markdown("### Proposed Risk Tier Thresholds"))
-    tier_df = pd.DataFrame.from_dict(TIER_THRESHOLDS, orient='index')
-    tier_df.index.name = 'Tier'
-    display(tier_df)
-
-    # Alex Chen inputs the metadata for the Predictive Maintenance Model
-    predictive_maintenance_model_metadata = {
-        'model_name': 'Predictive Maintenance Model v2.1',
-        'business_use': 'Predict equipment failure in manufacturing to optimize maintenance schedules and reduce downtime.',
-        'domain': 'Operations Efficiency',
-        'model_type': 'ML classifier (time-series)',
-        'decision_criticality': 'High',  # If equipment fails, production stops, high financial impact
-        'data_sensitivity': 'Internal', # Uses internal operational data, not PII
-        'automation_level': 'Fully-Automated', # Model directly triggers alerts/actions without human gate
-        'deployment_mode': 'Real-time',
-        'regulatory_materiality': 'None', # Not directly tied to financial reporting or customer interaction
-        'owner_team': 'Manufacturing Operations Analytics',
-        'created_by': 'Alex Chen' # Example of specifying creator
-    }
-
-    print("\n--- Attempting to assess Predictive Maintenance Model ---")
-    try:
-        final_model_record = assess_model_risk(predictive_maintenance_model_metadata)
-        display(Markdown("### Model Metadata Successfully Registered and Risk Assessed:"))
-        display(final_model_record)
-
-        display(Markdown("\n### Summary of Inherent Risk Self-Assessment Results:"))
-        display(Markdown(f"**Model Name:** `{final_model_record['model_name']}`"))
-        display(Markdown(f"**Model ID:** `{final_model_record['model_id']}`"))
-        display(Markdown(f"**Total Inherent Risk Score:** `{final_model_record['inherent_risk_score']}`"))
-        display(Markdown(f"**Proposed Risk Tier:** `{final_model_record['proposed_risk_tier']}` - *{final_model_record['proposed_tier_description']}*"))
-        display(Markdown("\n**Score Breakdown:**"))
-        for factor, details in final_model_record['score_breakdown'].items():
-            display(Markdown(f"- **{factor.replace('_', ' ').title()}:** Value: `{details['value']}`, Points: `{details['points']}`"))
-
-    except ValueError as e:
-        print(f"Error during model assessment: {e}")
-    except RuntimeError as e:
-        print(f"Runtime error during model assessment: {e}")
-
-    print("\n--- Attempting to assess a model with missing data (will raise ValueError) ---")
-    invalid_model_metadata = {
-        'model_name': 'Incomplete Model',
-        'business_use': 'Test missing data',
-        # 'domain': 'Missing', # This field is missing
-        'model_type': 'Test',
-        'decision_criticality': 'Low',
-        'data_sensitivity': 'Public',
-        'automation_level': 'Manual',
-        'regulatory_materiality': 'None'
-    }
-    try:
-        assess_model_risk(invalid_model_metadata)
-    except ValueError as e:
-        print(f"Caught expected error: {e}")
-    except Exception as e:
-        print(f"Caught unexpected error: {e}")
-
-    print("\n--- Attempting to assess a model with invalid vocabulary (will raise ValueError) ---")
-    invalid_vocab_model_metadata = {
-        'model_name': 'Invalid Vocab Model',
-        'business_use': 'Test invalid vocab',
-        'domain': 'Finance',
-        'model_type': 'Test',
-        'decision_criticality': 'Super High', # Invalid value
-        'data_sensitivity': 'Public',
-        'automation_level': 'Manual',
-        'regulatory_materiality': 'None'
-    }
-    try:
-        assess_model_risk(invalid_vocab_model_metadata)
-    except ValueError as e:
-        print(f"Caught expected error: {e}")
-    except Exception as e:
-        print(f"Caught unexpected error: {e}")
+        raise RuntimeError(
+            f"An unexpected error occurred during model risk assessment: {e}")
