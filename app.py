@@ -21,6 +21,150 @@ st.sidebar.divider()
 st.title("QuLab: First Line - Model Owner's Initial Model Registration & Self-Assessment")
 st.divider()
 
+
+def render_model_risk_report(data):
+    """
+    Renders a Model Risk Assessment report from a JSON dictionary 
+    using native Streamlit components. No raw JSON is displayed.
+    """
+
+    # --- Header Section ---
+    st.title(data.get("model_name", "Unknown Model"))
+
+    c1, c2, c3 = st.columns([2, 1, 1])
+    with c1:
+        st.caption(f"**Model ID:** {data.get('model_id')}")
+    with c2:
+        st.caption(f"**Created By:** {data.get('created_by')}")
+    with c3:
+        st.caption(f"**Created At:** {data.get('created_at')}")
+
+    st.markdown("---")
+
+    # --- Risk Summary (Key Metrics) ---
+    st.subheader("Risk Assessment Outcome")
+
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric(label="Inherent Risk Score",
+                  value=data.get("inherent_risk_score"))
+    with m2:
+        st.metric(label="Proposed Risk Tier",
+                  value=data.get("proposed_risk_tier"))
+    with m3:
+        st.metric(label="Lab Version", value=data.get("lab_version"))
+    with m4:
+        st.metric(label="Model Stage", value=data.get("model_stage"))
+
+    st.info(
+        f"**Tier Description:** {data.get('proposed_tier_description')}", icon=None)
+
+    # --- Score Breakdown ---
+    st.subheader("Score Breakdown")
+
+    breakdown_data = data.get("score_breakdown", {})
+    if breakdown_data:
+        breakdown_items = []
+        for category, details in breakdown_data.items():
+            breakdown_items.append({
+                "Category": category.replace("_", " ").title(),
+                "Selected Value": details.get("value"),
+                "Risk Points": details.get("points")
+            })
+
+        df_breakdown = pd.DataFrame(breakdown_items)
+        st.dataframe(
+            df_breakdown,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Risk Points": st.column_config.NumberColumn(format="%d")
+            }
+        )
+
+    # --- Model Metadata Grid ---
+    st.subheader("Model Information")
+
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+
+    with row1_col1:
+        st.markdown(f"**Domain**\n\n{data.get('domain')}")
+        st.markdown(
+            f"**Decision Criticality**\n\n{data.get('decision_criticality')}")
+
+    with row1_col2:
+        st.markdown(f"**Model Type**\n\n{data.get('model_type')}")
+        st.markdown(f"**Data Sensitivity**\n\n{data.get('data_sensitivity')}")
+
+    with row1_col3:
+        st.markdown(f"**Deployment Mode**\n\n{data.get('deployment_mode')}")
+        st.markdown(f"**Automation Level**\n\n{data.get('automation_level')}")
+
+    st.markdown(f"**Business Use Case**")
+    st.markdown(f"> {data.get('business_use')}")
+
+    # --- Narratives & Questions ---
+    st.divider()
+
+    n1, n2 = st.columns(2)
+    with n1:
+        st.markdown("**Owner Risk Narrative**")
+        st.text_area("Narrative", value=data.get("owner_risk_narrative"),
+                     height=150, disabled=True, label_visibility="collapsed")
+
+    with n2:
+        st.markdown("**Mitigations Proposed**")
+        st.text_area("Mitigations", value=data.get("mitigations_proposed"),
+                     height=150, disabled=True, label_visibility="collapsed")
+
+    st.markdown("**Open Questions / Unresolved Items**")
+    st.warning(data.get("open_questions"), icon=None)
+
+    # --- Configuration (Collapsible) ---
+    with st.expander("View Risk Scoring Logic & Thresholds"):
+        config = data.get("scoring_config", {})
+
+        # 1. Tier Thresholds Table
+        st.markdown("#### Tier Thresholds")
+        thresholds = config.get("tier_thresholds", {})
+        if thresholds:
+            t_data = []
+            for tier, details in thresholds.items():
+                t_data.append({
+                    "Tier": tier,
+                    "Min Score": details.get("min_score"),
+                    "Description": details.get("description")
+                })
+            st.dataframe(pd.DataFrame(t_data), hide_index=True,
+                         use_container_width=True)
+
+        # 2. Scoring Matrix (Converted from JSON to Tables)
+        st.markdown("#### Scoring Reference Matrix")
+        scoring_table = config.get("risk_scoring_table", {})
+
+        # Create 2 columns to display the scoring logic side-by-side
+        cols = st.columns(2)
+        idx = 0
+
+        for category, scores in scoring_table.items():
+            # Determine which column to place this table in
+            with cols[idx % 2]:
+                st.markdown(f"**{category.replace('_', ' ').title()}**")
+
+                # Convert dict {Level: Score} to DataFrame
+                score_df = pd.DataFrame(
+                    list(scores.items()), columns=["Level", "Points"])
+                st.dataframe(
+                    score_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Points": st.column_config.NumberColumn(format="%d")
+                    }
+                )
+            idx += 1
+
+
 # --- Session State Initialization ---
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = '1) Model Registration'
@@ -60,8 +204,6 @@ with st.sidebar:
 
 # --- Page: 1) Model Registration ---
 if st.session_state['current_page'] == '1) Model Registration':
-    st.markdown(f"# 📊 AI Model Registration & Initial Risk Assessment")
-    st.markdown(f"---")
     st.markdown(f"As a **System / Model Owner** at Apex Financial Services, your role is crucial in ensuring the responsible and compliant deployment of AI models. Today, you are tasked with registering a new AI model (e.g., a Predictive Maintenance Model) into the enterprise model inventory. This is not just a bureaucratic step; it's a fundamental part of our Model Risk Management (MRM) framework, directly addressing the principles outlined in **SR Letter 11-7**.")
     st.markdown(f"")
     st.markdown(f"SR 11-7 emphasizes the importance of robust model development, implementation, and use, as well as comprehensive governance, policies, and controls. Specifically, Section IV (\"Model Development, Implementation, and Use\") highlights the need for disciplined processes, while Section VI (\"Governance, Policies, and Controls\") mandates maintaining a \"comprehensive set of information for models implemented for use\". Your initial model registration and self-assessment are the first line of defense, ensuring that potential model risks are identified and understood from the earliest stages of the model lifecycle. This proactive engagement helps us embed risk considerations at the source, saving time and reducing rework later, and fostering a culture of responsible AI.")
@@ -252,8 +394,6 @@ if st.session_state['current_page'] == '1) Model Registration':
                 st.error(f"Could not read JSON: {e}")
 # --- Page: 2) Risk Score Preview ---
 elif st.session_state['current_page'] == '2) Risk Score Preview':
-    st.markdown(f"# 🔍 Inherent Risk Score Preview")
-    st.markdown(f"---")
     st.markdown(f"With the model metadata captured, the next step is to perform the initial inherent risk self-assessment. This involves applying the predefined scoring logic to the model's characteristics (e.g., `decision_criticality`, `data_sensitivity`). This step allows you to \"assess the magnitude\" of model risk, a core activity in model risk management according to SR 11-7. Understanding the inherent risk helps in determining the appropriate level of scrutiny and governance required for the model.")
     st.markdown(f"")
     st.markdown(f"Apex Financial Services uses a rule-based system to calculate an initial inherent risk score and assign a preliminary risk tier. This system considers several key factors defined by SR 11-7 and internal policies, helping us quantify the \"magnitude\" of model risk based on factors like \"model complexity, higher uncertainty about inputs and assumptions, broader use, and larger potential impact\" (SR 11-7, Page 4).")
@@ -322,8 +462,7 @@ $$""")
 
 # --- Page: 3) Narrative & Export ---
 elif st.session_state['current_page'] == '3) Narrative & Export':
-    st.markdown(f"# ✍️ Narrative & Export Model Registration")
-    st.markdown(f"---")
+
     st.markdown(f"As a Model Owner, providing a clear narrative for your model's risk assessment is a critical component of effective Model Risk Management. This narrative provides context, explains assumptions, outlines potential mitigations, and raises any open questions, enriching the structured data for future review and oversight.")
     st.markdown(f"")
     st.markdown(f"SR 11-7 Section VI (\"Governance, Policies, and Controls\") emphasizes comprehensive model documentation, stating it should be \"sufficiently detailed so that parties unfamiliar with a model can understand how the model operates, its limitations, and its key assumptions.\" Your narrative plays a key role in fulfilling this requirement by adding qualitative depth to the quantitative assessment.")
@@ -364,40 +503,47 @@ elif st.session_state['current_page'] == '3) Narrative & Export':
                 f"Owner's Inherent Risk Narrative must be at least {narrative_min_length} characters long.")
 
         st.markdown(f"---")
-        st.markdown(f"## 4. Export Model Registration Artifact")
-        st.markdown(f"This section allows you to preview and export the complete model registration record, including all metadata, the inherent risk assessment, and your narrative, as a single JSON file. This artifact is ready for ingestion into Apex Financial Services' centralized model inventory.")
 
-        # Consolidate all data for export
-        export_data = {
-            **st.session_state['model_details'],
-            'owner_risk_narrative': st.session_state['owner_risk_narrative'],
-            'mitigations_proposed': st.session_state['mitigations_proposed'] if st.session_state['mitigations_proposed'] else None,
-            'open_questions': st.session_state['open_questions'] if st.session_state['open_questions'] else None,
-            'export_format_version': 'lab1_export_v1'
-        }
-        st.session_state['export_artifact'] = export_data
+        if st.button("Export Model Registration Artifact"):
+            st.markdown(f"## 4. Export Model Registration Artifact")
+            st.markdown(f"This section allows you to preview and export the complete model registration record, including all metadata, the inherent risk assessment, and your narrative, as a single JSON file. This artifact is ready for ingestion into Apex Financial Services' centralized model inventory.")
 
-        st.markdown(f"### JSON Export Preview")
-        st.json(st.session_state['export_artifact'])
+            # Consolidate all data for export
+            export_data = {
+                **st.session_state['model_details'],
+                'owner_risk_narrative': st.session_state['owner_risk_narrative'],
+                'mitigations_proposed': st.session_state['mitigations_proposed'] if st.session_state['mitigations_proposed'] else None,
+                'open_questions': st.session_state['open_questions'] if st.session_state['open_questions'] else None,
+                'export_format_version': 'lab1_export_v1'
+            }
+            st.session_state['export_artifact'] = export_data
 
-        # Create a downloadable JSON file
-        json_output = json.dumps(st.session_state['export_artifact'], indent=4)
-        download_filename = f"lab1_{st.session_state['model_details'].get('model_name', 'model_registration').replace(' ', '_').lower()}.json"
+            render_model_risk_report(st.session_state['export_artifact'])
 
-        download_button_disabled = not st.session_state['model_registered'] or not is_narrative_valid
+            with st.expander("View Raw JSON"):
+                json_preview = json.dumps(
+                    st.session_state['export_artifact'], indent=4)
+                st.code(json_preview, language='json')
 
-        st.download_button(
-            label="Download Model Registration JSON",
-            data=json_output,
-            file_name=download_filename,
-            mime="application/json",
-            disabled=download_button_disabled,
-            help="Download button is enabled once model is registered and narrative meets minimum length."
-        )
+            # Create a downloadable JSON file
+            json_output = json.dumps(
+                st.session_state['export_artifact'], indent=4)
+            download_filename = f"lab1_{st.session_state['model_details'].get('model_name', 'model_registration').replace(' ', '_').lower()}.json"
 
-        if download_button_disabled:
-            st.info(
-                "Please register a model and provide a valid narrative to enable download.")
+            download_button_disabled = not st.session_state['model_registered'] or not is_narrative_valid
+
+            st.download_button(
+                label="Download Model Registration JSON",
+                data=json_output,
+                file_name=download_filename,
+                mime="application/json",
+                disabled=download_button_disabled,
+                help="Download button is enabled once model is registered and narrative meets minimum length."
+            )
+
+            if download_button_disabled:
+                st.info(
+                    "Please register a model and provide a valid narrative to enable download.")
 
 # License
 st.caption('''
